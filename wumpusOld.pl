@@ -5,54 +5,52 @@
 %
 % By Renrui Liu, SID 950392, renruil@student.unimelb.edu.au
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+% TODO:
+% 1.好像目前来讲，border不需要，因为只是在map的coordinates里走，不碰到边界，但暂时不删
+% 2.机器人从A到B只有一条线路走
+% 3.写updateState让机器人能重复开拓地图
+% 4.找到wumpus后调整开枪
 
 :- module(wumpus,[initialState/5, guess/3, updateState/4]).
-%TODO: 1.最后都跑不出wumpus的话会起始点循环
 
 % Done
 initialState(NR, NC, XS, YS, State0):-
-    %calculate all coordinates
-    getCords(NR,NC,Cords,[]),
-    %initialState has all unexplored coordinates 
-    append(Cords,[(XS,YS)],State0). 
+    BorderR is NR + 1,
+    BorderC is NC + 1,
+    bor(BorderR,BorderC,List), % The borders should be larger than the map size by 1.
+    sort(List,List0),% Remove depulicates
+    append(List0,[(XS,YS)],State0).
 
 guess(State0, State, Guess):- 
+    %Get all coordinates of the map and pick up all possible destinations
+    allcoordinates(State0,Allcoordinates),
     write(State0),
-    sort(State0,S1),
-    last(S1,Destination), % Pick the bottom right coordinate as destination
-    %也可改成去离出发点StartPoint最远的地点
+    exploreMap(Allcoordinates,State0,Destinations),
+    member(Destination,Destinations), % Pick one possible destination
     last(State0,StartPoint), % Get the StartPoint
-    find(StartPoint,Destination,Guess,_),
-    State = State0.
+    find(StartPoint,Destination,Path,Previous),
+    append(State0,Previous,State1), 
+    sort(State1,State), % Remove depulicates and get new state
+    Guess = Path.
+    %append(Path,[shoot],Guess). %
 
-% Call after a robot got killed or finishied
+% Call after a robot got killed or finishied. %Not start yet
 updateState(State0, Guess, Feedback, State):-
-    sort(State0,S1),
-    last(S1,Destination), 
     last(State0,StartPoint), % Get the StartPoint
-    %Remove all visited coordinates and get a new State
-    find(StartPoint,Destination,Guess,Previous),
-    lightUpMap(State0,Previous,NewState),
-
-%TODO:这块搞定了，接下来在guess里把destination挑出来然后往那里射击
-    (member(wumpus,Feedback) ->
-        %Get destination and send back to guess
-        append(NewState,[Destination],State); 
-        State = NewState
-    ).
+    move(StartPoint,Guess,Previous,[]),
+    append(State0,Previous,State).
     %write(Feedback).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %remove all visited coordinates from allcoordinates list.
-lightUpMap(State,Previous,NewState):-
-    (   Previous == [] ->
-            State = NewState;
-            Previous = [Head|Tail],
-            delete(State,Head,NewState1),
-            lightUpMap(NewState1,Tail,NewState)
+exploreMap(AllCords,State0,Destinations):-
+    (   State0 == [] ->
+            AllCords = Destinations;
+            State0 = [Head|Tail],
+            delete(AllCords,Head,D1),
+            exploreMap(D1,Tail,Destinations)
     ).
 
 allcoordinates(State0,AllCords):-
