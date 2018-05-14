@@ -29,10 +29,9 @@ guess(State0, State, Guess):-
         ShootPositions = [ShootPosition|_],
         write(ShootPosition),nl,
 
-        %拿所有射击路线，然后选出可以击杀的路线
-        findShootPaths(StartPoint,ShootPosition,Paths,[]),
-
-        append(Path,[shoot],Guess), %应该找最短的
+        %拿所有射击路线，然后选出（一条）可以击杀的路线
+        selectShootPaths(StartPoint,ShootPosition,WumpusPosition,Path),
+        append(Path,[shoot],Guess),
         State = State0;
         
         %不知道wumpus位置，继续探索
@@ -68,11 +67,36 @@ updateState(State0, Guess, Feedback, State):-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-findShootPaths(StartPoint,ShootPosition,Paths,A):-   
-    %要用到findall了
-    find(StartPoint,ShootPosition,Path),
+selectShootPaths(StartPoint,(SX,SY),(WX,WY),Path):-
+    findall(P,find(StartPoint,ShootPosition,P),Ps),
+??? write(Ps),nl,
+  
+    %Ps中ShootPosition和wumpus的X相同的,
+    %最后一步只留south,north,Y相同的只留east,west
 
-    getShootPositions((NR,NC),(X,Y),ShootPositions):-
+???    write(stophere),nl,
+    getUnwantPaths(SX,WX,SY,WY,Ps,Paths,[]),
+
+    write(stop2),nl,
+    subtract(Ps,Paths,Path1),
+    Path1 = [Path|_].
+
+getUnwantPaths(_,_,_,_,[],Paths,Paths).
+getUnwantPaths(SX,WX,SY,WY,[P|Ps],Paths,A):-
+            last(P,Move),
+            (   
+                SX =:= WX ->
+                    (member(Move,[east,west]) ->
+                        append(P,A,A1);
+                        write(1)
+                        );
+                    (member(Move,[north,south]) ->
+                        append(P,A,A1)
+                        )
+                    ),
+            getUnwantPaths(SX,WX,SY,WY,Ps,Paths,A1).
+
+getShootPositions((NR,NC),(X,Y),ShootPositions):-
     shootPositionXLoop(NR,NC,(X,Y),A1,[]),
     shootPositionYLoop(NR,NC,(X,Y),A2,[]),
     append(A1,A2,A3),
@@ -89,7 +113,6 @@ shootPositionXLoop(NR,NC,(X,Y),ShootPositions,A):-
             NNR is NR - 1,
             shootPositionXLoop(NNR,NC,(X,Y),ShootPositions,A1)
         ).
-
 shootPositionYLoop(NR,NC,(X,Y),ShootPositions,A):-
     (   
         NC =:= 0 ->
