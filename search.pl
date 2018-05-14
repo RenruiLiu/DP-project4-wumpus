@@ -14,7 +14,7 @@ find(Start, End, Previous, [Dirn|Path]) :-
 %% map represented as facts
 %% a - b - c
 %%     |   |
-%%     d - e - f
+%% k - d - e - f
 %%     |   |   |
 %%     g   h - i 
 edge(a,  east, b).
@@ -37,3 +37,9 @@ edge(h, north, e).
 edge(h,  east, i).
 edge(i,  west, h).
 edge(i, north, f).
+edge(g,  east, h).
+
+aTob(A,K,B):-
+    assert(edge(A,K,B)).
+
+% 
