@@ -72,6 +72,11 @@ updateState(State0, Guess, Feedback, State):-
             ShootPos = [_|RestShootPos],
             State = (Visited,Info,RestShootPos)
         ).
+    /*
+    0. 根据feedback，empty的就记录在visited，探索wumpus时就从剩下的找
+    1. 遇到Pit和wall，根据feedback和guess,算出位置，记录其位置到State里（Dontgo）
+    2. 改find，不要碰不要经过给出那些Dontgo位置
+    */
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
