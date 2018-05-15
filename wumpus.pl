@@ -68,33 +68,34 @@ updateState(State0, Guess, Feedback, State):-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 selectShootPaths(StartPoint,(SX,SY),(WX,WY),Path):-
-    findall(P,find(StartPoint,ShootPosition,P),Ps),
-??? write(Ps),nl,
+    findall(P,find(StartPoint,(SX,SY),P),Ps),
   
     %Ps中ShootPosition和wumpus的X相同的,
     %最后一步只留south,north,Y相同的只留east,west
 
-???    write(stophere),nl,
     getUnwantPaths(SX,WX,SY,WY,Ps,Paths,[]),
-
-    write(stop2),nl,
     subtract(Ps,Paths,Path1),
+    %只选出第一条shootPath
     Path1 = [Path|_].
 
-getUnwantPaths(_,_,_,_,[],Paths,Paths).
-getUnwantPaths(SX,WX,SY,WY,[P|Ps],Paths,A):-
-            last(P,Move),
-            (   
-                SX =:= WX ->
-                    (member(Move,[east,west]) ->
-                        append(P,A,A1);
-                        write(1)
-                        );
-                    (member(Move,[north,south]) ->
-                        append(P,A,A1)
-                        )
-                    ),
-            getUnwantPaths(SX,WX,SY,WY,Ps,Paths,A1).
+getUnwantPaths(_,_,_,_,[],Paths,A):-
+    delete(A,[],Paths).
+getUnwantPaths(SX,WX,SY,WY,[P|RestP],Paths,A):-
+    isUnwantPath(SX,WX,SY,WY,P,TrueP),
+    append([TrueP],A,A1),
+    getUnwantPaths(SX,WX,SY,WY,RestP,Paths,A1).
+
+isUnwantPath(SX,WX,SY,WY,P,TrueP):-    
+    last(P,Move),
+    (
+        SX =:= WX, member(Move,[east,west])->
+            TrueP = P;
+            SY =:= WY, member(Move,[north,south]) ->
+                TrueP = P;
+                TrueP = []           
+        ).
+
+
 
 getShootPositions((NR,NC),(X,Y),ShootPositions):-
     shootPositionXLoop(NR,NC,(X,Y),A1,[]),
