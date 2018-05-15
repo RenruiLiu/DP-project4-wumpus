@@ -5,7 +5,9 @@
 %
 % By Renrui Liu, SID 950392, renruil@student.unimelb.edu.au
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%TODO: 可以加强find，让避免走过wumpus和pit和wall
+%TODO:  %记录pit和wall
+        %记录探索过的路 -> 选探索地点时避免它们
+        %可以加强find，让避免走过wumpus和pit和wall
 
 :- module(wumpus,[initialState/5, guess/3, updateState/4]).
 
@@ -32,8 +34,9 @@ guess(State0, State, Guess):-
         write(ShootPosition),nl,
 
         %拿所有射击路线，然后选出（一条）可以击杀的路线
-        selectShootPaths(StartPoint,ShootPosition,WumpusPosition,Path),
         write(shootpathIs),nl,
+        %limit(1,getShootPath(StartPoint,ShootPosition,WumpusPosition,Path)),
+        getShootPath(StartPoint,ShootPosition,WumpusPosition,Path),
         write(Path),nl,
         append(Path,[shoot],Guess),
         State = State0;
@@ -43,6 +46,7 @@ guess(State0, State, Guess):-
         State = State0 
     ).
         
+
 updateState(State0, Guess, Feedback, State):-
     write(Guess),nl,
     write(Feedback),nl,
@@ -74,70 +78,33 @@ updateState(State0, Guess, Feedback, State):-
 
 %closestShootPosition().
 
-limitSteps([],Ps,_,A):-
-    delete(A,[],Ps).
-limitSteps([Path|RestP],Ps,Limit,A):-
-    length(Path,Len),
-    (   Len =< Limit ->
-        append([Path],A,A1);
-        A1 = A
-        ),
-    limitSteps(RestP,Ps,Limit,A1).
+getShootPath(StartPoint,(SX,SY),(WX,WY),ShootPath):-
+    find(StartPoint,(SX,SY),ShootPath),
+    %length(ShootPath,LenOfP),
+    %Limit is SY + SY,
+    %LenOfP =< Limit,
+    checkShootPath(SX,WX,SY,WY,ShootPath).
 
-selectShortestPath([],_,A,A).
-selectShortestPath([Path|RestP],Len,ShortestP,A):-
-    length(Path,Len1),
-    (   Len1 > 0, Len1 < Len ->
-            A1 = [Path],
-            Len2 is Len1;
-            Len1 =:= Len ->
-                append([Path],A,A1),
-                Len2 is Len1;
-                Len2 = Len,
-                A1 = A
-        ),
-    selectShortestPath(RestP,Len2,ShortestP,A1).
-    
-
-selectShootPaths(StartPoint,(SX,SY),(WX,WY),Path):-
-    findall(P,find(StartPoint,(SX,SY),P),AllPs),
-    %这里太多了，在大地图卡住
-    limitSteps(AllPs,Ps,10,[]),
-    %
-
-    %Ps中ShootPosition和wumpus的X相同的,
-    %最后一步只留south,north,Y相同的只留east,west
-
-    getUnwantPaths(SX,WX,SY,WY,Ps,UnwantPaths,[]),
-    subtract(Ps,UnwantPaths,Path1),
-    %从中选出最短的那些，再选出第一条shootPath
-    selectShortestPath(Path1,100,ShortPaths,[]),
-    ShortPaths = [Path|_].
-
-getUnwantPaths(_,_,_,_,[],Paths,A):-
-    delete(A,[],Paths).
-getUnwantPaths(SX,WX,SY,WY,[P|RestP],Paths,A):-
-    isUnwantPath(SX,WX,SY,WY,P,TrueP),
-    append([TrueP],A,A1),
-    getUnwantPaths(SX,WX,SY,WY,RestP,Paths,A1).
-
-isUnwantPath(SX,WX,SY,WY,P,TrueP):-    
+checkShootPath(SX,WX,SY,WY,P):-    
     last(P,Move),
     (
-        SX =:= WX, member(Move,[east,west])->
-            TrueP = P;
-            SY =:= WY, member(Move,[north,south]) ->
-                TrueP = P;
-                TrueP = []           
+        SX =:= WX ->
+            (SY > WY ->
+                Move = north;
+                Move = south
+                );
+        SY =:= WY ->
+            (SX < WX ->
+                Move = east;
+                Move = west
+                )            
         ).
-
-
 
 getShootPositions((NR,NC),(X,Y),ShootPositions):-
     shootPositionXLoop(NR,NC,(X,Y),A1,[]),
     shootPositionYLoop(NR,NC,(X,Y),A2,[]),
     append(A1,A2,A3),
-    RedundancePos = [(X,Y),(NR,NC),(1,NC),(1,1),(NR,1)],
+    RedundancePos = [(X,Y),(X,1),(X,NC),(NR,Y),(1,Y)],
     subtract(A3,RedundancePos,ShootPositions),
     write(ShootPositions),nl.
 
@@ -235,3 +202,46 @@ aTob1(A,B):-
     assert(edge(A,south,B));
     assert(edge(A,north,B))
     ).
+/*
+limitSteps([],Ps,_,A):-
+    delete(A,[],Ps).
+limitSteps([Path|RestP],Ps,Limit,A):-
+    length(Path,Len),
+    (   Len =< Limit ->
+        append([Path],A,A1);
+        A1 = A
+        ),
+    limitSteps(RestP,Ps,Limit,A1).
+    */
+
+/*
+selectShortestPath([],_,A,A).
+selectShortestPath([Path|RestP],Len,ShortestP,A):-
+    length(Path,Len1),
+    (   Len1 > 0, Len1 < Len ->
+            A1 = [Path],
+            Len2 is Len1;
+            Len1 =:= Len ->
+                append([Path],A,A1),
+                Len2 is Len1;
+                Len2 = Len,
+                A1 = A
+        ),
+    selectShortestPath(RestP,Len2,ShortestP,A1).
+*/
+
+/*
+fAll(StartPoint,(SX,SY),L):-
+    findall(P,find(StartPoint,(SX,SY),P),AllPs),
+    length(AllPs,L).
+    */
+
+
+/*
+getUnwantPaths(_,_,_,_,[],Paths,A):-
+    delete(A,[],Paths).
+getUnwantPaths(SX,WX,SY,WY,[P|RestP],Paths,A):-
+    isUnwantPath(SX,WX,SY,WY,P,TrueP),
+    append([TrueP],A,A1),
+    getUnwantPaths(SX,WX,SY,WY,RestP,Paths,A1).
+*/
