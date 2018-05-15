@@ -5,6 +5,7 @@
 %
 % By Renrui Liu, SID 950392, renruil@student.unimelb.edu.au
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%TODO: 可以加强find，让避免走过wumpus和pit和wall
 
 :- module(wumpus,[initialState/5, guess/3, updateState/4]).
 
@@ -43,8 +44,9 @@ guess(State0, State, Guess):-
     ).
         
 updateState(State0, Guess, Feedback, State):-
-    write(Feedback),nl,
     write(Guess),nl,
+    write(Feedback),nl,
+
     State0 = (Visited,Info,ShootPos),
     Info = [Border,StartPoint,WumpusPos],
     %miss的话将其shootposition删去
@@ -72,6 +74,16 @@ updateState(State0, Guess, Feedback, State):-
 
 %closestShootPosition().
 
+limitSteps([],Ps,_,A):-
+    delete(A,[],Ps).
+limitSteps([Path|RestP],Ps,Limit,A):-
+    length(Path,Len),
+    (   Len =< Limit ->
+        append([Path],A,A1);
+        A1 = A
+        ),
+    limitSteps(RestP,Ps,Limit,A1).
+
 selectShortestPath([],_,A,A).
 selectShortestPath([Path|RestP],Len,ShortestP,A):-
     length(Path,Len1),
@@ -88,13 +100,16 @@ selectShortestPath([Path|RestP],Len,ShortestP,A):-
     
 
 selectShootPaths(StartPoint,(SX,SY),(WX,WY),Path):-
-    findall(P,find(StartPoint,(SX,SY),P),Ps),
-  
+    findall(P,find(StartPoint,(SX,SY),P),AllPs),
+    %这里太多了，在大地图卡住
+    limitSteps(AllPs,Ps,10,[]),
+    %
+
     %Ps中ShootPosition和wumpus的X相同的,
     %最后一步只留south,north,Y相同的只留east,west
 
-    getUnwantPaths(SX,WX,SY,WY,Ps,Paths,[]),
-    subtract(Ps,Paths,Path1),
+    getUnwantPaths(SX,WX,SY,WY,Ps,UnwantPaths,[]),
+    subtract(Ps,UnwantPaths,Path1),
     %从中选出最短的那些，再选出第一条shootPath
     selectShortestPath(Path1,100,ShortPaths,[]),
     ShortPaths = [Path|_].
