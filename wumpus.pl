@@ -27,10 +27,13 @@ guess(State0, State, Guess):-
     Info = [Border,StartPoint,WumpusPosition], %Info = [边界/wumpus, 起点]
     (   \+ WumpusPosition == unknown ->
         ShootPositions = [ShootPosition|_],
+        write(shootPositionIs),nl,
         write(ShootPosition),nl,
 
         %拿所有射击路线，然后选出（一条）可以击杀的路线
         selectShootPaths(StartPoint,ShootPosition,WumpusPosition,Path),
+        write(shootpathIs),nl,
+        write(Path),nl,
         append(Path,[shoot],Guess),
         State = State0;
         
@@ -67,6 +70,23 @@ updateState(State0, Guess, Feedback, State):-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+%closestShootPosition().
+
+selectShortestPath([],_,A,A).
+selectShortestPath([Path|RestP],Len,ShortestP,A):-
+    length(Path,Len1),
+    (   Len1 > 0, Len1 < Len ->
+            A1 = [Path],
+            Len2 is Len1;
+            Len1 =:= Len ->
+                append([Path],A,A1),
+                Len2 is Len1;
+                Len2 = Len,
+                A1 = A
+        ),
+    selectShortestPath(RestP,Len2,ShortestP,A1).
+    
+
 selectShootPaths(StartPoint,(SX,SY),(WX,WY),Path):-
     findall(P,find(StartPoint,(SX,SY),P),Ps),
   
@@ -75,8 +95,9 @@ selectShootPaths(StartPoint,(SX,SY),(WX,WY),Path):-
 
     getUnwantPaths(SX,WX,SY,WY,Ps,Paths,[]),
     subtract(Ps,Paths,Path1),
-    %只选出第一条shootPath
-    Path1 = [Path|_].
+    %从中选出最短的那些，再选出第一条shootPath
+    selectShortestPath(Path1,100,ShortPaths,[]),
+    ShortPaths = [Path|_].
 
 getUnwantPaths(_,_,_,_,[],Paths,A):-
     delete(A,[],Paths).
