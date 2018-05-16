@@ -16,33 +16,34 @@ initialState(NR, NC, XS, YS, State0):-
     getCords(NR,NC,Cords,[]),
     %build Facts
     buildMap(Cords,NR,NC),
-
     Visited = [(XS,YS)],
     WumpusPosition = unknown,
     Info = [(NR,NC),(XS,YS),WumpusPosition],
     ShootPositions = [],
-    State0 = (Visited,Info,ShootPositions).
+    Dontgo = [(XS,YS)],
+    State0 = (Visited,Info,ShootPositions,Dontgo).
 
 
 guess(State0, State, Guess):-
     %find path 然后去走
-    State0 = (_Visited,Info,ShootPositions),
+    State0 = (Visited,Info,ShootPositions,Dontgo),
     Info = [Border,StartPoint,WumpusPosition], %Info = [边界/wumpus, 起点]
     (   \+ WumpusPosition == unknown ->
         ShootPositions = [ShootPosition|_],
-        write(shootPositionIs),nl,
-        write(ShootPosition),nl,
 
         %拿所有射击路线，然后选出（一条）可以击杀的路线
-        write(shootpathIs),nl,
-        %limit(1,getShootPath(StartPoint,ShootPosition,WumpusPosition,Path)),
-        getShootPath(StartPoint,ShootPosition,WumpusPosition,Path),
-        write(Path),nl,
+        getShootPath(StartPoint,ShootPosition,WumpusPosition,Dontgo,Path),
+
         append(Path,[shoot],Guess),
         State = State0;
         
-        %不知道wumpus位置，继续探索
-        find(StartPoint,Border,Guess), %一开始就去地图边界 %找没去过的地方
+        %不知道wumpus位置，继续探索 ！没去的地方
+
+        Border = (NR,NC),
+        getCords(NR,NC,Cords,[]),
+        subtract(Cords,Visited,[UnVisited|_]),
+
+        find(StartPoint,UnVisited,Guess), %一开始就去地图边界 %找没去过的地方
         State = State0 
     ).
         
@@ -51,26 +52,40 @@ updateState(State0, Guess, Feedback, State):-
     write(Guess),nl,
     write(Feedback),nl,
 
-    State0 = (Visited,Info,ShootPos),
+    State0 = (Visited,Info,ShootPos,Dontgo),
     Info = [Border,StartPoint,WumpusPos],
     %miss的话将其shootposition删去
     %接feedback后 发出指令
     (   
         WumpusPos == unknown ->
             (member(wumpus,Feedback) ->
+
                 length(Feedback,WP),
                 takeN(WP,Guess,PathToWumpus),
-                find(StartPoint,WumpusPosition,PathToWumpus),
+
+                %找出wumpus位置
+                find(StartPoint,WumpusPosition,PathToWumpus), 
                 NewInfo = [Border,StartPoint,WumpusPosition], %把wumpus位置加在info里
-                getShootPositions(Border,WumpusPosition,ShootPositions), %把shootpositions放入state
-                State = (Visited,NewInfo,ShootPositions),
-                write(updateFinished),nl %需要在此update Visited
+                getShootPositions(Border,WumpusPosition,ShootPositions), %得到shootpositions
+                    
+                %把wumpus位置加在Dontgo里
+                append([WumpusPosition],Dontgo,NewDontgo),
+                %State里存了刚放的shootPositions,加入了新的wumpusPosition
+                State = (Visited,NewInfo,ShootPositions,NewDontgo),
+                write(updateFinished),nl; 
+
+                %Feedback没wumpus，这次没找到，记录path加入visited不要再去探索
+                recordPath(StartPoint,Guess,UpdatedVisited,[]),
+                append(UpdatedVisited,Visited,NewVisited),
+                State = (NewVisited,Info,ShootPos,Dontgo)
                 );
+            
             %已知wumpus位置，且已尝试shoot，失败
 
-            %将shootposition删去
+            %Miss %将shootposition删去
             ShootPos = [_|RestShootPos],
-            State = (Visited,Info,RestShootPos)
+            State = (Visited,Info,RestShootPos,Dontgo)
+
         ).
     /*
     0. 根据feedback，empty的就记录在visited，探索wumpus时就从剩下的找
@@ -81,10 +96,16 @@ updateState(State0, Guess, Feedback, State):-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%closestShootPosition().
+%closestShootPosition(). 可能没必要
 
-getShootPath(StartPoint,(SX,SY),(WX,WY),ShootPath):-
-    find(StartPoint,(SX,SY),ShootPath),
+recordPath(_,[],UpdatedVisited,UpdatedVisited).
+recordPath(StartPoint,[Direction|RestGuess],UpdatedVisited,A):-
+    find(StartPoint,Stop,[Direction]),
+    append([Stop],A,A1),
+    recordPath(Stop,RestGuess,UpdatedVisited,A1).
+
+getShootPath(StartPoint,(SX,SY),(WX,WY),Dontgo,ShootPath):-
+    find(StartPoint,(SX,SY),Dontgo,ShootPath),
     %length(ShootPath,LenOfP),
     %Limit is SY + SY,
     %LenOfP =< Limit,
@@ -111,6 +132,7 @@ getShootPositions((NR,NC),(X,Y),ShootPositions):-
     append(A1,A2,A3),
     RedundancePos = [(X,Y),(X,1),(X,NC),(NR,Y),(1,Y)],
     subtract(A3,RedundancePos,ShootPositions),
+    write(allShootPositionsAre),nl,
     write(ShootPositions),nl.
 
 shootPositionXLoop(NR,NC,(X,Y),ShootPositions,A):-
@@ -139,6 +161,8 @@ takeN(N, _, Xs) :- N =< 0, !, N =:= 0, Xs = [].
 takeN(_, [], []).
 takeN(N, [X|Xs], [X|Ys]) :- M is N-1, takeN(M, Xs, Ys).
 
+
+%把不去的地方放到Previous就可以了
 find(StartPoint, Destination, Path) :-
     find(StartPoint, Destination, [StartPoint], Path).
 find(StartPoint, StartPoint, _, []).

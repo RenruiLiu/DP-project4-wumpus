@@ -1,11 +1,12 @@
 
+
 %% find a simple Path from Start to End
+
 find(Start, End, Path) :-
-	find(Start, End, [Start], Path).
-%% find(Start, End, Previous, Path).
-%% find a simple Path from Start to End
-%% having visited Previous already
+	find(Start, End, [Start,d], Path).
+
 find(Start, Start, _Previous, []).
+
 find(Start, End, Previous, [Dirn|Path]) :-
     edge(Start, Dirn, Med),
     \+ member(Med, Previous), % dont visit previous places
@@ -41,5 +42,3 @@ edge(g,  east, h).
 
 aTob(A,K,B):-
     assert(edge(A,K,B)).
-
-% 
