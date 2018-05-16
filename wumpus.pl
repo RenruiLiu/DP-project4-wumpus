@@ -1,38 +1,54 @@
 %%:- module(wumpus, [initialState/5, guess/3, updateState/4]).
 
 %% [Done 15 May 2018] Initialize game state
+%% ------------------------------------------------------------------
 %% Game state is consist of
 %%      -> A traversed Map (always from the output of updateState)
 %%      -> A list of steps (planned to traverse)
 %%      -> informations that is needed thoughout the guess, such as 
 %%         map size and energy
-initialState(NR,NC,XS,YS,[[XS,YS,empty],[XS-YS],NR,NC,100]).
+initialState(NR,NC,XS,YS,[[XS,YS,empty],[XS-YS],[NR,NC,100]]).
 
+
+%% [Half Done 16 May 2018] Able to traverse all blocks in the map 
+%% routes does not guarantee a non repetition list (possibly traverse 
+%% a block for several times)
+%% -------------------------------------------------------------------
 %% Map [[X,Y,_]]-> Map construction from the last robot
 %% Steps [X-Y]-> traversed blocks following the sequence of Guess
 guess(State1,State2,Guess):-
     guess(State1,State2,[],Guess).
 
-guess([OM,NS,NR,NC,0],[OM,NS,NR,NC,0],GuessHist,GuessHist).
-guess([OldMap,[X1-Y1|Steps],NR,NC,EN1],[OldMap,NewSteps,NR,NC,EN2],GuessHist,Guess):-
-(   EN1 > 0 ->  
-        nextDes(NR,NC,[X1-Y1|Steps],XP,YP),
-        findPath(X1,Y1,XP,YP,EN1,ENP,NR,NC,Guess1),
-        constSteps(X1-Y1,NR,NC,EN1,Guess1,[X1-Y1|Steps],NewSteps1),
-        append(GuessHist,Guess1,GuessHist2),
-        write(EN1),write(' '),write(ENP),write(' '),write(Guess1),write('||'),
-        guess([OldMap,NewSteps1,NR,NC,ENP],[OldMap,NewSteps,NR,NC,EN2],GuessHist2,Guess)
+%guess([OM,NS,[NR,NC,0]],[OM,NS,[NR,NC,0]],GuessHist,GuessHist).
+guess(State1,State2,GuessHist,Guess):-
+    State1 = [OldMap,OldSteps,Info],
+    OldSteps = [X1-Y1|Steps],
+    Info = [NR,NC,EN],
+    myL(OldSteps,S), MS is NR * NC,
+    (   EN > 0, S < MS->
+            nextDes(NR,NC,OldSteps,XP,YP),
+            write(XP),write(YP),nl,
+            findPath(X1,Y1,XP,YP,EN,ENP,NR,NC,Guess1),
+            constSteps(X1-Y1,NR,NC,EN,Guess1,OldSteps,NewSteps1),
+            append(GuessHist,Guess1,GuessHist2),
+            Info2 = [NR,NC,ENP],
+            guess([OldMap,NewSteps1,Info2],State2,GuessHist2,Guess)
+    ;   State2 = State1,
+        Guess = GuessHist
+        ).
 
+
+dec(N,N1):-
+(   N > 0 ->
+    N0 is N - 5,
+    dec(N0,N1)
+;   N1 is N
     ).
-
-
-
 %% [Done 15 May 2018] X, Y that is not traversed
-%%
+%% [Improved 16 May 2018] auto-generate until X Y is good
 nextDes(NR,NC,Steps,X,Y):-
     random_between(1,NC,X1),
     random_between(1,NR,Y1),
-    write(X1),write(Y1),nl,
     (   \+ member(X1-Y1,Steps)->
             X is X1,Y is Y1
     ;   nextDes(NR,NC,Steps,X,Y)
@@ -101,14 +117,8 @@ move(X,Y,XN,YN,EN,ENN,_,_,west):-
 cont(X,Y,Step,[X-Y|Step]).
 keep(Step,Step).
 
-myL(0,[]).
-myL(N,[_|List]):-
-    N1 is N + 1,
-    myL(N1,List).
-
-myLength(0,[]).
-myLength(N,[H|L]):-
-    myL(Add,H),
-    myLength(N1,L),
-    N is Add + N1.
+myL([],0).
+myL([_|List],N):-
+    myL(List,N1),
+    N is N1 + 1.
 
