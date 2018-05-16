@@ -28,10 +28,16 @@ guess([OldMap,[X1-Y1|Steps],NR,NC,EN1],[OldMap,NewSteps,NR,NC,EN2],GuessHist,Gue
 
 
 %% [Done 15 May 2018] X, Y that is not traversed
+%%
 nextDes(NR,NC,Steps,X,Y):-
-    random_between(1,NC,X),
-    random_between(1,NR,Y),
-    \+ member(X-Y,Steps).
+    random_between(1,NC,X1),
+    random_between(1,NR,Y1),
+    write(X1),write(Y1),nl,
+    (   \+ member(X1-Y1,Steps)->
+            X is X1,Y is Y1
+    ;   nextDes(NR,NC,Steps,X,Y)
+    ) .
+
 
 
 %% [Done 15 May 2018] find a path and leftover energy given start and destination
@@ -106,4 +112,3 @@ myLength(N,[H|L]):-
     myLength(N1,L),
     N is Add + N1.
 
-    
