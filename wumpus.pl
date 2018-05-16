@@ -1,4 +1,4 @@
-%%:- module(wumpus, [initialState/5, guess/3, updateState/4]).
+:- module(wumpus, [initialState/5, guess/3, updateState/4]).
 
 %% [Done 15 May 2018] Initialize game state
 %% ------------------------------------------------------------------
@@ -7,7 +7,11 @@
 %%      -> A list of steps (planned to traverse)
 %%      -> informations that is needed thoughout the guess, such as 
 %%         map size and energy
-initialState(NR,NC,XS,YS,[[XS,YS,empty],[XS-YS],[NR,NC,100]]).
+initialState(NR,NC,XS,YS,[[XS-YS-empty],[XS-YS],[NR,NC,100]]).
+
+
+%% ===================================================================
+%% *******************************************************************
 
 
 %% [Half Done 16 May 2018] Able to traverse all blocks in the map 
@@ -19,10 +23,17 @@ initialState(NR,NC,XS,YS,[[XS,YS,empty],[XS-YS],[NR,NC,100]]).
 guess(State1,State2,Guess):-
     guess(State1,State2,[],Guess).
 
-%guess([OM,NS,[NR,NC,0]],[OM,NS,[NR,NC,0]],GuessHist,GuessHist).
+%% Sequence
+%% -> if not running out of energy or the map is supposed to be traversed
+%%      -> Get a new untraversed position
+%%      -> Find path to that position
+%%      -> Construct a list of steps
+%%      -> Call itself
+%% -> if map is done or run out of energy
+%%      -> Guess and State will be the same as last one
 guess(State1,State2,GuessHist,Guess):-
     State1 = [OldMap,OldSteps,Info],
-    OldSteps = [X1-Y1|Steps],
+    OldSteps = [X1-Y1|_],
     Info = [NR,NC,EN],
     myL(OldSteps,S), MS is NR * NC,
     (   EN > 0, S < MS->
@@ -38,12 +49,6 @@ guess(State1,State2,GuessHist,Guess):-
         ).
 
 
-dec(N,N1):-
-(   N > 0 ->
-    N0 is N - 5,
-    dec(N0,N1)
-;   N1 is N
-    ).
 %% [Done 15 May 2018] X, Y that is not traversed
 %% [Improved 16 May 2018] auto-generate until X Y is good
 nextDes(NR,NC,Steps,X,Y):-
@@ -53,7 +58,6 @@ nextDes(NR,NC,Steps,X,Y):-
             X is X1,Y is Y1
     ;   nextDes(NR,NC,Steps,X,Y)
     ) .
-
 
 
 %% [Done 15 May 2018] find a path and leftover energy given start and destination
@@ -70,6 +74,7 @@ findPath(X1,Y1,X2,Y2,EN,EN2,NR,NC,Hist,[NMove|Guess]):-
         findPath(XP,YP,X2,Y2,ENP,EN2,NR,NC,[Step|Hist],Guess)
     ).
 
+
 %% [Done 15 May 2018] able to construct list of traversed blocks using
 %% set of instructions
 constSteps(_,_,_,_,[],OldSteps,OldSteps).
@@ -84,35 +89,34 @@ constSteps(X-Y,NR,NC,EN,[Move|Guess],OldSteps,NewSteps):-
 
 %% [Done 15 May 2018] moving instructions
 move(X,Y,XN,YN,EN,ENN,_,_,north):-
-    (   Y > 1 ->
+    (   Y >= 1 ->
             YN is Y - 1,
             XN is X,
             ENN is EN - 1
     ).
 
 move(X,Y,XN,YN,EN,ENN,NR,_,south):-
-    (   Y < NR ->
+    (   Y =< NR ->
             YN is Y + 1,
             XN is X,
             ENN is EN - 1
     ).
 
 move(X,Y,XN,YN,EN,ENN,_,NC,east):-
-    (   X < NC ->
+    (   X =< NC ->
             XN is X + 1,
             YN is Y,
             ENN is EN - 1
     ).
 
 move(X,Y,XN,YN,EN,ENN,_,_,west):-
-    (   X > 1 ->
+    (   X >= 1 ->
             XN is X - 1,
             YN is Y,
             ENN is EN - 1
     ).
 
 
-%%updateState([X,Y,_,],Guess,Feedback,State1):-
 
 cont(X,Y,Step,[X-Y|Step]).
 keep(Step,Step).
@@ -122,3 +126,46 @@ myL([_|List],N):-
     myL(List,N1),
     N is N1 + 1.
 
+
+
+%% ========================================================================
+%% ************************************************************************
+
+
+updateState(State0,Guess,Feedback,State1):-
+    State0 = [OldMap,OldSteps,Info],
+    Guess = [Move|GList],
+    Feedback = [Fb|FbList],
+    OldMap = [[XS,YS,Content]|MList].
+
+
+%% [Done 16 May 2018] construct the new map due to the set of
+%% instructions and feedback. output -> NewMap
+updateMap(_,Map1,_,[],_,Map1).
+updateMap(Pos,Map1,Guess,Feedback,Info,NewMap):-
+    Guess = [Move|GList],
+    Feedback = [Fb|FbList],
+    Info = [NR,NC,_],
+    updateBlock(Pos,NR,NC,Move,Fb,XN-YN-Fb,NewPos),
+
+    (   \+ member(XN-YN-_,Map1) ->
+            append([XN-YN-Fb],Map1,NewMap1)
+        ;   NewMap1 = Map1
+        ),
+
+    updateMap(NewPos,NewMap1,GList,FbList,Info,NewMap).
+
+%% updateMap(1-1,[1-1-empty],[south,east],[wall,pit],[5,5,10],NewMap).
+
+updateBlock(X1-Y1,NR,NC,Move,Fb,X2-Y2-Fb,X3-Y3):-
+    move(X1,Y1,X2,Y2,10,_,NR,NC,Move),
+    (   Fb == wall ->
+            X3 is X1,Y3 is Y1
+    ;       X3 is X2,Y3 is Y2
+        ).
+
+newPos(X1-Y1,NR,NC,Move,Fb,X2-Y2):-
+    (   Fb == wall ->
+            X2 is X1,Y2 is Y1
+    ;   move(X1,Y1,X2,Y2,10,_,NR,NC,Move)
+        ).
