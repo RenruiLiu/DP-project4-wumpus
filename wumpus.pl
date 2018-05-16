@@ -5,9 +5,7 @@
 %
 % By Renrui Liu, SID 950392, renruil@student.unimelb.edu.au
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%TODO:  %记录pit和wall
-        %记录探索过的路 -> 选探索地点时避免它们
-        %可以加强find，让避免走过wumpus和pit和wall
+%TODO:  1.思考改Update结构
 
 :- module(wumpus,[initialState/5, guess/3, updateState/4]).
 
@@ -28,7 +26,10 @@ initialState(NR, NC, XS, YS, State0):-
 guess(State0, State, Guess):-
     %find path 然后去走
     State0 = (Visited,Info,ShootPositions,Dontgo),
-    Info = [Border,StartPoint,WumpusPosition], %Info = [边界/wumpus, 起点]
+    Info = [Border,StartPoint,WumpusPosition],
+    write(看State0),nl,
+    write(Visited),nl,
+    write(真的是State),nl,
     (   \+ WumpusPosition == unknown ->
 
         %拿所有射击路线，然后选出（一条）可以击杀的路线
@@ -42,6 +43,8 @@ guess(State0, State, Guess):-
         Border = (NR,NC),
         getCords(NR,NC,Cords,[]),
         subtract(Cords,Visited,AllUnVisited),
+        write(firsttttttttttstartsHere),nl,
+        write(StartPoint),nl,
         findPath(StartPoint,AllUnVisited,Dontgo,Guess),
         %find(StartPoint,UnVisited,Dontgo,Guess),
         State = State0 
@@ -50,19 +53,19 @@ guess(State0, State, Guess):-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%        
 
 updateState(State0, Guess, Feedback, State):-
+% miss的话将其shootposition删去
     write(Guess),nl,
     write(Feedback),nl,
 
     State0 = (Visited,Info,ShootPos,Dontgo),
     Info = [Border,StartPoint,WumpusPos],
-    %miss的话将其shootposition删去
-    %接feedback后 发出指令
-    (   
-        WumpusPos == unknown ->
+    
+
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%  The robot just found wumpus.
             (member(wumpus,Feedback) ->
+                write(进入了刚找到wumpus),nl,
                 %%找出wumpus位置
                 length(Feedback,WP),
                 takeN(WP,Guess,PathToWumpus),
@@ -79,8 +82,38 @@ updateState(State0, Guess, Feedback, State):-
                 write(updateFinished0),nl
                 ; 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%  Found pit / wall 
+    %%  Found wall
+        %1.收集所有wall和位置到list
+        %3.把wall从guess中删去，得到真实的guess可以算出path,加入visited里
+        %2.放入visited和dontgo
+            (member(wall,Feedback)) ->
+                write(进入了wall),nl,
+                getWallPositions(StartPoint,Feedback,Guess,WallPositions,[]),
+                write(wall2),nl,
+            %% Get true Path (Dont know why it returns 2 same results)
+                findall(TruePaths,getTruePath(Feedback,Guess,TruePaths),AllTruePaths),
+                last(AllTruePaths,TruePath),
+                write(wall3),nl,
+            %% Append the path and wall position into Visited, and wall into Dontgo
+                write(StartPoint),nl,
+                write(TruePath),nl,
+                recordPath(StartPoint,TruePath,TrueVisited,[]),
+                write(wall4),nl,
+                append(TrueVisited,WallPositions,WallUpdateVisited),
+                append(WallUpdateVisited,Visited,NewVisited),
+                
+                append(WallPositions,Dontgo,NewDontgo),
+                write(WallUpdateVisited),
+                State = (NewVisited,Info,ShootPos,NewDontgo),
+                write(从wall出去了),nl
+                ;
+                                
+
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%  Found pit 
             (member(pit,Feedback)) ->
+                write(进入了pit),nl,
+
                 length(Feedback,Pit),
                 takeN(Pit,Guess,PathToPit),                
                 find(StartPoint,PitPosition,PathToPit),
@@ -89,50 +122,83 @@ updateState(State0, Guess, Feedback, State):-
                 recordPath(StartPoint,PathToPit,UpdatedVisited,[]),
                 append(UpdatedVisited,Visited,NewVisited1),
                 sort(NewVisited1,NewVisited),%Remove duplicates
-                State = (NewVisited,Info,ShootPositions,NewDontgo),
+                State = (NewVisited,Info,_ShootPositions,NewDontgo),
                 write(updateFinished1),nl,
                 write(NewVisited),nl,
                 write(dontGoAre),nl,
                 write(NewDontgo),nl
-                ; 
+                ;
 
-
-
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%  No wumpus, 记录path加入visited不要再去探索
+                write(进入了啥都没),nl,
+
                 recordPath(StartPoint,Guess,UpdatedVisited,[]),
                 append(UpdatedVisited,Visited,NewVisited),
                 State = (NewVisited,Info,ShootPos,Dontgo)
-                );
-            
-            %已知wumpus位置，且已尝试shoot，失败
-
-            %Miss %将shootposition删去
-            ShootPos = [_|RestShootPos],
-            State = (Visited,Info,RestShootPos,Dontgo)
-
-        ).
-    /*
-    0. 根据feedback，empty的就记录在visited，探索wumpus时就从剩下的找
-    1. 遇到Pit和wall，根据feedback和guess,算出位置，记录其位置到State里（Dontgo）
-    2. 改find，不要碰不要经过给出那些Dontgo位置
-    */
+                ).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+getTruePath(Feedback,Guess,TruePath):-
+    (
+        member(wall,Feedback) ->
+            nth1(W,Feedback,wall,RestFeedback),
+            nth1(W,Guess,_,RestGuess),
+            getTruePath(RestFeedback,RestGuess,TruePath);
+        TruePath = Guess
+        ).
+
+
+getWallPositions(StartPoint,Feedback,Guess,WallPositions,A):-
+    findall(W,(nth1(W,Feedback,wall)),Walls),
+    (Walls == [] ->
+        WallPositions = A;
+
+        %%Get this wall Position
+        Walls = [Wall|_],
+        takeN(Wall,Guess,PathToWall),
+        find(StartPoint,WallPosition,PathToWall),
+        append([WallPosition],A,A1),
+
+    %% Cut PathToWall to get RestGuess
+        append(PathToWall,RestGuess,Guess),
+    %% Cut First walls feedback to get feedback for rest walls
+        takeN(Wall,Feedback,FstFeedback),
+        append(FstFeedback,RestFeedback,Feedback),
+    %% Get new StartPoint after the robot hit a wall
+        Wall1 is Wall - 1,
+        takeN(Wall1,Guess,PathToNewStartPoint),
+        find(StartPoint,NewStartPoint,PathToNewStartPoint),
+        getWallPositions(NewStartPoint,RestFeedback,RestGuess,WallPositions,A1)
+        ).
+
 findPath(StartPoint,AllPositions,Dontgo,Guess):-
+    write(进入findPath),nl,
     write(whereToVisit),nl,
+    write(startsHere),nl,
+    write(StartPoint),nl,
+    write(hereareDontgo),nl,
+    write(Dontgo),nl,
+    write(allPositionsAre),nl,
+    write(AllPositions),nl,
     member(Position,AllPositions),
     write(Position),nl,
     find(StartPoint,Position,Dontgo,Guess).
 
 recordPath(_,[],UpdatedVisited,UpdatedVisited).
 recordPath(StartPoint,[Direction|RestGuess],UpdatedVisited,A):-
+    (   Direction == shoot ->
+            recordPath(Stop,[],UpdatedVisited,A1)
+        ;
     find(StartPoint,Stop,[Direction]),
     append([Stop],A,A1),
-    recordPath(Stop,RestGuess,UpdatedVisited,A1).
+    recordPath(Stop,RestGuess,UpdatedVisited,A1)
+    ).
 
 getShootPath(StartPoint,ShootPositions,(WX,WY),Dontgo,ShootPath):-
+    write(这里吗),nl,
     findPath(StartPoint,ShootPositions,Dontgo,ShootPath),
     find(StartPoint,(SX,SY),ShootPath),
     checkShootPath(SX,WX,SY,WY,ShootPath).
