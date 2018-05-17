@@ -159,9 +159,13 @@ updateState(State0,Guess,Feedback,[NewMap,NewSteps,NewInfo]):-
 %% [Done 16 May 2018] construct the new map due to the set of
 %% instructions and feedback. output -> NewMap
 
-updateMap(OldMap,_,[],_,OldMap).
 updateMap(OldMap,Guess,Feedback,Info,NewMap):-
     OldMap = [Empty,_,_,_],Empty = [X-Y|_],
+    updateMap(X-Y,OldMap,Guess,Feedback,Info,NewMap).
+
+
+updateMap(_,OldMap,_,[],_,OldMap).
+updateMap(X-Y,OldMap,Guess,Feedback,Info,NewMap):-
     Guess = [Move|Glist],
     Feedback = [Fb|Fblist],
     Info = [NR,NC,_],
@@ -169,8 +173,8 @@ updateMap(OldMap,Guess,Feedback,Info,NewMap):-
     moveM(X,Y,X1,Y1,NR,NC,Move),
     (   \+ member(X1-Y1,Mlist) ->
             consMap(X1-Y1,Fb,OldMap,NewMap1),
-            updateMap(NewMap1,Glist,Fblist,Info,NewMap)
-    ;       updateMap(OldMap,Glist,Fblist,Info,NewMap)
+            updateMap(X1-Y1,NewMap1,Glist,Fblist,Info,NewMap)
+    ;       updateMap(X1-Y1,OldMap,Glist,Fblist,Info,NewMap)
         ).
 %% 
 
@@ -249,3 +253,21 @@ inBound(X,Y,R,C):-
     X =< C,
     Y > 0,
     Y =< R.
+
+%% find a place that in sequence and not in pit or wall
+%% come up with a list of pairs (X-Y, Move)(as sometimes
+%% we need to move towards the wall)
+shotPos(Map,Pairs):-
+    Map = [_,Pit,Wall,XW-YW],
+    XRL is XW - 1, XRH = XW + 1,
+    YRL is YW - 1, YRH = YW + 1,
+    makePair().
+
+makePair(NR,NC,Wumpus,Pair):-
+    Wumpus = X-Y.
+
+myZ(_,0,[]).
+myZ(X,NR,[X-NR|List]):-
+    NR is NR1 + 1.
+    myZ(X,NR1,List).
+
