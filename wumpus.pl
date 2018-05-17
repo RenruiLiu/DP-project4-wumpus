@@ -5,7 +5,7 @@
 %
 % By Renrui Liu, SID 950392, renruil@student.unimelb.edu.au
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%TODO:  1.思考改Update结构
+%TODO:  1.还是findall有问题，怎么知道这个shootPosition不通，从而筛选NewShootPos呢？
 
 :- module(wumpus,[initialState/5, guess/3, updateState/4]).
 
@@ -53,18 +53,123 @@ guess(State0, State, Guess):-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%        
 
 updateState(State0, Guess, Feedback, State):-
-% miss的话将其shootposition删去
     write(Guess),nl,
     write(Feedback),nl,
 
     State0 = (Visited,Info,ShootPos,Dontgo),
     Info = [Border,StartPoint,WumpusPos],
     
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    (WumpusPos == unknown ->
+
+    % Hit a wall
+        (member(wall,Feedback) ->
+            getWallPositions(StartPoint,Feedback,Guess,WallPositions,[]),
+        % Get true Path (Dont know why it returns 2 same results)
+            findall(TruePaths,getTruePath(Feedback,Guess,TruePaths),AllTruePaths),
+            last(AllTruePaths,TruePath),            
+        % Append the path and wall position into Visited, and wall into Dontgo
+            recordPath(StartPoint,TruePath,TrueVisited,[]),
+            append(TrueVisited,WallPositions,WallUpdateVisited),
+            append(WallUpdateVisited,Visited,NewVisited),
+            append(WallPositions,Dontgo,Dontgo1);
+
+        % Didn't meet any walls
+            TruePath = Guess,
+            Dontgo1 = Dontgo,
+            recordPath(StartPoint,TruePath,NewVisited,[])
+            ),
+
+    % Fell in a pit
+        (member(pit,Feedback) ->
+            length(Feedback,Pit),
+            takeN(Pit,TruePath,PathToPit),                
+            find(StartPoint,PitPosition,PathToPit),
+        % Add Pit to Dontgo and PathToPit to Visited
+            append([PitPosition],Dontgo1,NewDontgo),
+            subtract(ShootPos, NewDontgo, NewShootPos),
+            State = (NewVisited, Info, NewShootPos, NewDontgo);
+            write(noPits)
+            ),
+
+    % Found Wumpus
+        (member(wumpus,Feedback) ->
+            length(Feedback,WP),
+            takeN(WP,TruePath,PathToWumpus),
+            find(StartPoint,WumpusPosition,PathToWumpus),
+        % Add WumpusPosition into info and DontGo
+            NewInfo = [Border,StartPoint,WumpusPosition],
+            append([WumpusPosition],Dontgo1,NewDontgo),
+        % Get all shoot Positions
+            getShootPositions(Border,WumpusPosition,ShootPositions), 
+            write(这里啥事),nl,
+            findall(SPosition,getShootPath(StartPoint, ShootPositions, WumpusPosition,NewDontgo, _ShootPath, SPosition),NewShootPos),
+            write(这里啥事1),nl,
+            State = (NewVisited, NewInfo, NewShootPos, NewDontgo);
+            write(noWumpus)
+            ),
+
+    % Didn't meet any pits or wumpus
+        (\+ member(wumpus,Feedback) , \+ member(pit,Feedback) ->
+            State = (NewVisited, Info, ShootPos, Dontgo);
+            write(somethingWrongInUpdateBlock)
+            )
+        
+        ;
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Know wumpus position and tried to shoot him but fail
+        delete(Guess,shoot,Guess1),
+
+    % Hit a wall
+        (member(wall,Feedback) ->
+            getWallPositions(StartPoint,Feedback,Guess1,WallPositions,[]),
+        % Get true Path (Dont know why it returns 2 same results)
+            findall(TruePaths,getTruePath(Feedback,Guess1,TruePaths),AllTruePaths),
+            last(AllTruePaths,TruePath),            
+        % Append the path and wall position into Visited, and wall into Dontgo
+            recordPath(StartPoint,TruePath,TrueVisited,[]),
+            append(TrueVisited,WallPositions,WallUpdateVisited),
+            append(WallUpdateVisited,Visited,NewVisited),
+            append(WallPositions,Dontgo,Dontgo1);
+
+        % Didn't meet any walls
+            TruePath = Guess1,
+            Dontgo1 = Dontgo,
+            recordPath(StartPoint,TruePath,NewVisited,[])
+            ),
+
+    %Position and Direction are right, but missed (A wall in between)
+        NewVisited = [TrueShootPos|_],
+        get(StartPoint,IdealShootPos,Guess1),
+        IdealShootPos =  (SX,SY),
+        WumpusPos = (WX,WY),
+        (TrueShootPos == IdealShootPos, checkShootPath(SX,WX,SY,WY,Guess1) ->
+            delete(ShootPos,IdealShootPos,NewShootPos)
+            
+            ;
+        %Didn't make it to shoot Position
+            (member(pit,Feedback) ->
+                length(Feedback,Pit),
+                takeN(Pit,TruePath,PathToPit),                
+                find(StartPoint,PitPosition,PathToPit),
+            % Add Pit to Dontgo and PathToPit to Visited
+                append([PitPosition],Dontgo1,NewDontgo),
+                subtract(ShootPos, NewDontgo, NewShootPos);
+
+            % Didn't meet any pits
+                NewDontgo = Dontgo1,
+                NewShootPos = ShootPos
+                )
+            ),
+        findall(SPosition,getShootPath(StartPoint, NewShootPos, WumpusPos,NewDontgo, _ShootPath, SPosition),NewShootPos2),
+        State = (NewVisited, Info, NewShootPos2, NewDontgo)
+        ).
+
 /*  if (没wumpus位置)
         if (wall)
-            修正Guess ->TruePath
+            修正Guess ->TruePath DontGo1
             recordPath(StartPoint,TruePath,NewVisited,[]).
-        else TruePath = Guess
+        else TruePath = Guess, DontGo1 = DontGo
             recordPath(StartPoint,TruePath,NewVisited,[]).
 
         if (pit)
@@ -80,7 +185,7 @@ updateState(State0, Guess, Feedback, State):-
         else write(noWumpus)
 
         if (no pit no wumpus)
-            记录TruePath 入 NewVisited， 
+            %?记录TruePath 入 NewVisited， 
             State = (NewVisited, Info, ShootPos, Dontgo)
         else write(foundSomething)
         
@@ -112,6 +217,7 @@ updateState(State0, Guess, Feedback, State):-
         State = (NewVisited, Info, NewShootPos2, NewDontgo)
 */
 
+/*
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%  The robot just found wumpus.
             (member(wumpus,Feedback) ->
@@ -187,7 +293,7 @@ updateState(State0, Guess, Feedback, State):-
                 append(UpdatedVisited,Visited,NewVisited),
                 State = (NewVisited,Info,ShootPos,Dontgo)
                 ).
-
+*/
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -241,13 +347,9 @@ findPath(StartPoint,AllPositions,Dontgo,Guess):-
 
 recordPath(_,[],UpdatedVisited,UpdatedVisited).
 recordPath(StartPoint,[Direction|RestGuess],UpdatedVisited,A):-
-    (   Direction == shoot ->
-            recordPath(Stop,[],UpdatedVisited,A1)
-        ;
     find(StartPoint,Stop,[Direction]),
     append([Stop],A,A1),
-    recordPath(Stop,RestGuess,UpdatedVisited,A1)
-    ).
+    recordPath(Stop,RestGuess,UpdatedVisited,A1).
 
 getShootPath(StartPoint,ShootPositions,(WX,WY),Dontgo,ShootPath):-
     findPath(StartPoint,ShootPositions,Dontgo,ShootPath),
