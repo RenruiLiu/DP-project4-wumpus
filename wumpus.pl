@@ -40,7 +40,7 @@ guess(State1,State2,GuessHist,Guess):-
     (   EN > 0, S < MS->
             nextDes(NR,NC,OldSteps,XP,YP),
             write(XP),write(YP),nl,
-            findPath(X1,Y1,XP,YP,EN,ENP,NR,NC,Guess1),
+            findPath(X1,Y1,XP,YP,EN,ENP,NR,NC,OldMap,Guess1),
             constSteps(X1-Y1,NR,NC,EN,Guess1,OldSteps,NewSteps1),
             append(GuessHist,Guess1,GuessHist2),
             Info2 = [NR,NC,ENP],
@@ -62,18 +62,19 @@ nextDes(NR,NC,Steps,X,Y):-
 
 
 %% [Done 15 May 2018] find a path and leftover energy given start and destination
-findPath(X,Y,X1,Y1,EN,EN1,NR,NC,Path):-
-    findPath(X,Y,X1,Y1,EN,EN1,NR,NC,[X-Y],Path).
+findPath(X,Y,X1,Y1,EN,EN1,NR,NC,Map,Path):-
+    findPath(X,Y,X1,Y1,EN,EN1,NR,NC,Map,[X-Y],Path).
 
-findPath(_,_,_,_,0,0,_,_,_Hist,[]).
-findPath(X,Y,X,Y,EN,EN,_,_,_Hist,[]).
-findPath(X1,Y1,X2,Y2,EN,EN2,NR,NC,Hist,[NMove|Guess]):-
-(   EN > 0 ->
-        move(X1,Y1,XP,YP,EN,ENP,NR,NC,NMove),
-        Step = XP-YP,
-        \+ member(Step,Hist),
-        findPath(XP,YP,X2,Y2,ENP,EN2,NR,NC,[Step|Hist],Guess)
-    ).
+findPath(_,_,_,_,0,0,_,_,_,_Hist,[]).
+findPath(X,Y,X,Y,EN,EN,_,_,_,_Hist,[]).
+findPath(X1,Y1,X2,Y2,EN,EN2,NR,NC,Map,Hist,[NMove|Guess]):-
+    EN > 0,Map = [_,Pit,Wall,_],
+    move(X1,Y1,XP,YP,EN,ENP,NR,NC,NMove),
+    Step = XP-YP,
+    \+ member(Step,Hist),
+    \+ member(Step,Wall),
+    \+ member(Step,Pit),
+    findPath(XP,YP,X2,Y2,ENP,EN2,NR,NC,Map,[Step|Hist],Guess).
 
 
 %% [Done 15 May 2018] able to construct list of traversed blocks using
