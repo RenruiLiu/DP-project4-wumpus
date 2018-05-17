@@ -3,7 +3,7 @@
 %% find a simple Path from Start to End
 
 find(Start, End, Path) :-
-	find(Start, End, [Start,d], Path).
+	find(Start, End, [Start], Path).
 
 find(Start, Start, _Previous, []).
 
@@ -17,7 +17,7 @@ find(Start, End, Previous, [Dirn|Path]) :-
 %%     |   |
 %% k - d - e - f
 %%     |   |   |
-%%     g   h - i 
+%%     g - h - i 
 edge(a,  east, b).
 edge(b,  west, a).
 edge(b, south, d).

@@ -106,8 +106,8 @@ updateState(State0, Guess, Feedback, State):-
             else NewDontgo = Dontgo
                 NewShootPos = ShootPos
             
-        ??试一下能不能找到ShootPath，能就去，不能就删 (筛一下shootpos)
-        getShootPath(StartPoint, NewShootPos, WumpusPosition,NewDontgo, ShootPath),
+        找不到path就删 (筛一下shootpos)
+        finall(SPosition,getShootPath(StartPoint, NewShootPos, WumpusPosition,NewDontgo, _ShootPath, SPosition),NewShootPos2),
 
         State = (NewVisited, Info, NewShootPos2, NewDontgo)
 */
@@ -125,8 +125,10 @@ updateState(State0, Guess, Feedback, State):-
                 append([WumpusPosition],Dontgo,NewDontgo),
                 %得到shootpositions
                 getShootPositions(Border,WumpusPosition,ShootPositions), 
+                %筛选出可走的射击点
+                findall(SPosition,getShootPath(StartPoint, ShootPositions, WumpusPosition,NewDontgo, _ShootPath, SPosition),NewShootPos),
                 %State里存了刚放的shootPositions,加入了新的wumpusPosition
-                State = (Visited,NewInfo,ShootPositions,NewDontgo),
+                State = (Visited,NewInfo,NewShootPos,NewDontgo),
                 write(updateFinished0),nl
                 ; 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -223,6 +225,7 @@ getWallPositions(StartPoint,Feedback,Guess,WallPositions,A):-
         ).
 
 findPath(StartPoint,AllPositions,Dontgo,Guess):-
+    /*
     write(进入findPath),nl,
     write(whereToVisit),nl,
     write(startsHere),nl,
@@ -231,8 +234,9 @@ findPath(StartPoint,AllPositions,Dontgo,Guess):-
     write(Dontgo),nl,
     write(allPositionsAre),nl,
     write(AllPositions),nl,
-    member(Position,AllPositions),
     write(Position),nl,
+    */
+    member(Position,AllPositions),
     find(StartPoint,Position,Dontgo,Guess).
 
 recordPath(_,[],UpdatedVisited,UpdatedVisited).
@@ -246,7 +250,11 @@ recordPath(StartPoint,[Direction|RestGuess],UpdatedVisited,A):-
     ).
 
 getShootPath(StartPoint,ShootPositions,(WX,WY),Dontgo,ShootPath):-
-    write(这里吗),nl,
+    findPath(StartPoint,ShootPositions,Dontgo,ShootPath),
+    find(StartPoint,(SX,SY),ShootPath),
+    checkShootPath(SX,WX,SY,WY,ShootPath).
+
+getShootPath(StartPoint,ShootPositions,(WX,WY),Dontgo,ShootPath,(SX,SY)):-
     findPath(StartPoint,ShootPositions,Dontgo,ShootPath),
     find(StartPoint,(SX,SY),ShootPath),
     checkShootPath(SX,WX,SY,WY,ShootPath).
