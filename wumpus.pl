@@ -7,7 +7,8 @@
 %%      -> A list of steps (planned to traverse)
 %%      -> informations that is needed thoughout the guess, such as 
 %%         map size and energy
-initialState(NR,NC,XS,YS,[[XS-YS-empty],[XS-YS],[NR,NC,100]]).
+%% format of Map: [Empty,Pit,Wall,Wumpus]. Each is a list of of X-Y
+initialState(NR,NC,XS,YS,[[[XS-YS],[],[],0-0],[XS-YS],[NR,NC,100]]).
 
 
 %% ===================================================================
@@ -82,35 +83,35 @@ constSteps(X-Y,NR,NC,EN,[Move|Guess],OldSteps,NewSteps):-
     move(X,Y,X1,Y1,EN,EN1,NR,NC,Move),
     ( member(X1-Y1,OldSteps) ->
         keep(OldSteps,NewSteps1)
-    ;   cont(X1,Y1,OldSteps,NewSteps1)
+    ;   cont(X1-Y1,OldSteps,NewSteps1)
     ),
     constSteps(X1-Y1,NR,NC,EN1,Guess,NewSteps1,NewSteps).
 
 
 %% [Done 15 May 2018] moving instructions
 move(X,Y,XN,YN,EN,ENN,_,_,north):-
-    (   Y >= 1 ->
+    (   Y > 1 ->
             YN is Y - 1,
             XN is X,
             ENN is EN - 1
     ).
 
 move(X,Y,XN,YN,EN,ENN,NR,_,south):-
-    (   Y =< NR ->
+    (   Y < NR ->
             YN is Y + 1,
             XN is X,
             ENN is EN - 1
     ).
 
 move(X,Y,XN,YN,EN,ENN,_,NC,east):-
-    (   X =< NC ->
+    (   X < NC ->
             XN is X + 1,
             YN is Y,
             ENN is EN - 1
     ).
 
 move(X,Y,XN,YN,EN,ENN,_,_,west):-
-    (   X >= 1 ->
+    (   X > 1 ->
             XN is X - 1,
             YN is Y,
             ENN is EN - 1
@@ -118,7 +119,7 @@ move(X,Y,XN,YN,EN,ENN,_,_,west):-
 
 
 
-cont(X,Y,Step,[X-Y|Step]).
+cont(X-Y,Step,[X-Y|Step]).
 keep(Step,Step).
 
 myL([],0).
@@ -132,36 +133,79 @@ myL([_|List],N):-
 %% ************************************************************************
 
 
-updateState(State0,Guess,Feedback,State1):-
-    State0 = [OldMap,OldSteps,Info],
-    Guess = [Move|GList],
-    Feedback = [Fb|FbList],
-    OldMap = [[XS,YS,Content]|MList].
+%% [Half Done 16 May 2018] update new map, traversed history
+%% [Maybe Done 17 May 2018] Stores blocks in diff arrays
+updateState(State0,Guess,Feedback,[NewMap,NewSteps,NewInfo]):-
+    State0 = [OldMap,_,Info],
+    Info = [NR,NC,_],
+    NewInfo = [NR,NC,100],
+    updateMap(OldMap,Guess,Feedback,Info,NewMap),
+    map2List(NewMap,NMlist),
+    cop2Step(NMlist,NR,NC,NewSteps).
+
+% 
 
 
 %% [Done 16 May 2018] construct the new map due to the set of
 %% instructions and feedback. output -> NewMap
-updateMap(_,Map1,_,[],_,Map1).
-updateMap(Pos,Map1,Guess,Feedback,Info,NewMap):-
-    Guess = [Move|GList],
-    Feedback = [Fb|FbList],
+
+updateMap(OldMap,_,[],_,OldMap).
+updateMap(OldMap,Guess,Feedback,Info,NewMap):-
+    OldMap = [Empty,_,_,_],Empty = [X-Y|_],
+    Guess = [Move|Glist],
+    Feedback = [Fb|Fblist],
     Info = [NR,NC,_],
-    updateBlock(Pos,NR,NC,Move,Fb,XN-YN-Fb,NewPos),
+    map2List(OldMap,Mlist),
+    moveM(X,Y,X1,Y1,NR,NC,Move),
+    (   \+ member(X1-Y1,Mlist) ->
+            consMap(X1-Y1,Fb,OldMap,NewMap1),
+            updateMap(NewMap1,Glist,Fblist,Info,NewMap)
+    ;       updateMap(OldMap,Glist,Fblist,Info,NewMap)
+        ).
+%% 
 
-    (   \+ member(XN-YN-_,Map1) ->
-            append([XN-YN-Fb],Map1,NewMap1)
-        ;   NewMap1 = Map1
-        ),
 
-    updateMap(NewPos,NewMap1,GList,FbList,Info,NewMap).
+consMap(BP,Fb,Map0,Map1):-
+    Map0 = [Empty,Pit,Wall,Wumpus],
+    (   Fb == pit ->
+            cont(BP,Pit,Pit1),
+            Map1 = [Empty,Pit1,Wall,Wumpus]
+    ;   Fb == wall ->
+            cont(BP,Wall,Wall1),
+            Map1 = [Empty,Pit,Wall1,Wumpus]
+    ;   Fb == wumpus ->
+            Wumpus1 = BP,
+            Map1 = [Empty,Pit,Wall,Wumpus1]
+    ;   % temporarily ignoring smell and stench
+            cont(BP,Empty,Empty1),
+            Map1 = [Empty1,Pit,Wall,Wumpus]
+        ).
+    
 
-%% updateMap(1-1,[1-1-empty],[south,east],[wall,pit],[5,5,10],NewMap).
+%% Steps shows how much the map has been constructed , but a map includes 
+%% edges, the steps don't
+cop2Step([],_,_,[]).
+cop2Step(Map,NR,NC,Steps):-
+    Map = [X-Y|MapList],
+(   inBound(X,Y,NR,NC) ->
+    cont(X-Y,Steps1,Steps),
 
-updateBlock(X1-Y1,NR,NC,Move,Fb,X2-Y2-Fb,X3-Y3):-
-    move(X1,Y1,X2,Y2,10,_,NR,NC,Move),
+    cop2Step(MapList,NR,NC,Steps1)
+;   cop2Step(MapList,NR,NC,Steps)
+    ).
+
+map2List(Map,List):-
+    Map = [Empty,Pit,Wall,_],
+    append(Empty,Pit,List0),
+    append(List0,Wall,List).
+
+%% [Done 16 May 2018] get status of next block using current position,
+%% movement and feedback
+updateBlock(X1-Y1,NR,NC,Move,Fb,X2-Y2,X3-Y3):-
+    moveM(X1,Y1,X2,Y2,NR,NC,Move),
     (   Fb == wall ->
             X3 is X1,Y3 is Y1
-    ;       X3 is X2,Y3 is Y2
+    ;       move(X1,Y1,X3,Y3,10,_,NR,NC,Move)
         ).
 
 newPos(X1-Y1,NR,NC,Move,Fb,X2-Y2):-
@@ -169,3 +213,29 @@ newPos(X1-Y1,NR,NC,Move,Fb,X2-Y2):-
             X2 is X1,Y2 is Y1
     ;   move(X1,Y1,X2,Y2,10,_,NR,NC,Move)
         ).
+
+moveM(X,Y,XN,YN,_,_,north):-
+    Y >= 1 ,
+    YN is Y - 1,
+    XN is X.
+
+moveM(X,Y,XN,YN,NR,_,south):-
+    Y =< NR,
+    YN is Y + 1,
+    XN is X.
+
+moveM(X,Y,XN,YN,_,NC,east):-
+    X =< NC,
+    XN is X + 1,
+    YN is Y.
+
+moveM(X,Y,XN,YN,_,_,west):-
+    X >= 1,
+    XN is X - 1,
+    YN is Y.
+
+inBound(X,Y,R,C):-
+    X > 0,
+    X =< C,
+    Y > 0,
+    Y =< R.
