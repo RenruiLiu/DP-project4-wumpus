@@ -60,7 +60,57 @@ updateState(State0, Guess, Feedback, State):-
     State0 = (Visited,Info,ShootPos,Dontgo),
     Info = [Border,StartPoint,WumpusPos],
     
+/*  if (没wumpus位置)
+        if (wall)
+            修正Guess ->TruePath
+            recordPath(StartPoint,TruePath,NewVisited,[]).
+        else TruePath = Guess
+            recordPath(StartPoint,TruePath,NewVisited,[]).
 
+        if (pit)
+            TruePath -> pitPoistion -> 加入NewDontgo
+            subtract(ShootPos, NewDontgo, NewShootPos),
+            State = (NewVisited, Info, NewShootPos, NewDontgo)
+        else write(noPit)
+
+        if (Wumpus)
+            TruePath，shootposition -> 加入NewShootPos, 加入NewDontgo 和 NewInfo
+            subtract(ShootPos, NewDontgo, NewShootPos1),
+            State = (NewVisited, NewInfo, NewShootPos1, NewDontgo)
+        else write(noWumpus)
+
+        if (no pit no wumpus)
+            记录TruePath 入 NewVisited， 
+            State = (NewVisited, Info, ShootPos, Dontgo)
+        else write(foundSomething)
+        
+    else (知道位置,已经试着去射，失败而归) Guess最后一位是shoot
+        delete(Guess,shoot,Guess1),
+        if (wall)
+            修正Guess1 -> TruePath
+            recordPath(StartPoint,TruePath,NewVisited,[]).
+            else TruePath = Guess1
+            recordPath(StartPoint,TruePath,NewVisited,[]).
+
+        last(NewVisited,TrueShootPos),
+        （位置对方向对，然而miss）
+        if (TrueShootPos == ShootPos && checkShootPath(SX,WX,SY,WY,TruePath) )
+                删去position -> NewShootPos
+
+        else (没到射击地)
+            if (pit) 
+                TruePath -> pitPoistion -> 加入NewDontgo;
+                subtract(ShootPos, NewDontgo, NewShootPos),
+
+                %State = (NewVisited, NewInfo, NewShootPos, NewDontgo)
+            else NewDontgo = Dontgo
+                NewShootPos = ShootPos
+            
+        ??试一下能不能找到ShootPath，能就去，不能就删 (筛一下shootpos)
+        getShootPath(StartPoint, NewShootPos, WumpusPosition,NewDontgo, ShootPath),
+
+        State = (NewVisited, Info, NewShootPos2, NewDontgo)
+*/
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%  The robot just found wumpus.
@@ -70,13 +120,11 @@ updateState(State0, Guess, Feedback, State):-
                 length(Feedback,WP),
                 takeN(WP,Guess,PathToWumpus),
                 find(StartPoint,WumpusPosition,PathToWumpus), 
-                %%把wumpus位置加在info里
+                %%把wumpus位置加在info和DontGo里
                 NewInfo = [Border,StartPoint,WumpusPosition], 
+                append([WumpusPosition],Dontgo,NewDontgo),
                 %得到shootpositions
                 getShootPositions(Border,WumpusPosition,ShootPositions), 
-                    
-                %%把wumpus位置加在Dontgo里
-                append([WumpusPosition],Dontgo,NewDontgo),
                 %State里存了刚放的shootPositions,加入了新的wumpusPosition
                 State = (Visited,NewInfo,ShootPositions,NewDontgo),
                 write(updateFinished0),nl
@@ -323,46 +371,4 @@ aTob1(A,B):-
     assert(edge(A,south,B));
     assert(edge(A,north,B))
     ).
-/*
-limitSteps([],Ps,_,A):-
-    delete(A,[],Ps).
-limitSteps([Path|RestP],Ps,Limit,A):-
-    length(Path,Len),
-    (   Len =< Limit ->
-        append([Path],A,A1);
-        A1 = A
-        ),
-    limitSteps(RestP,Ps,Limit,A1).
-    */
 
-/*
-selectShortestPath([],_,A,A).
-selectShortestPath([Path|RestP],Len,ShortestP,A):-
-    length(Path,Len1),
-    (   Len1 > 0, Len1 < Len ->
-            A1 = [Path],
-            Len2 is Len1;
-            Len1 =:= Len ->
-                append([Path],A,A1),
-                Len2 is Len1;
-                Len2 = Len,
-                A1 = A
-        ),
-    selectShortestPath(RestP,Len2,ShortestP,A1).
-*/
-
-/*
-fAll(StartPoint,(SX,SY),L):-
-    findall(P,find(StartPoint,(SX,SY),P),AllPs),
-    length(AllPs,L).
-    */
-
-
-/*
-getUnwantPaths(_,_,_,_,[],Paths,A):-
-    delete(A,[],Paths).
-getUnwantPaths(SX,WX,SY,WY,[P|RestP],Paths,A):-
-    isUnwantPath(SX,WX,SY,WY,P,TrueP),
-    append([TrueP],A,A1),
-    getUnwantPaths(SX,WX,SY,WY,RestP,Paths,A1).
-*/
