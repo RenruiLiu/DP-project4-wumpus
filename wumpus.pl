@@ -22,7 +22,14 @@ initialState(NR,NC,XS,YS,[[[XS-YS],[],[],0-0],[XS-YS],[NR,NC,100]]).
 %% Map [[X,Y,_]]-> Map construction from the last robot
 %% Steps [X-Y]-> traversed blocks following the sequence of Guess
 guess(State1,State2,Guess):-
-    guess(State1,State2,[],Guess).
+    State1 = [Map,_,_],
+    Map = [_,_,_,Wumpus],
+    (   Wumpus == 0-0 ->
+        %% wumpus not found
+        travMap(State1,State2,[],Guess)
+    ;   write(1)
+        ).
+%%    travMap(State1,State2,[],Guess).
 
 %% Sequence
 %% -> if not running out of energy or the map is supposed to be traversed
@@ -32,7 +39,9 @@ guess(State1,State2,Guess):-
 %%      -> Call itself
 %% -> if map is done or run out of energy
 %%      -> Guess and State will be the same as last one
-guess(State1,State2,GuessHist,Guess):-
+
+
+travMap(State1,State2,GuessHist,Guess):-
     State1 = [OldMap,OldSteps,Info],
     OldSteps = [X1-Y1|_],
     Info = [NR,NC,EN],
@@ -44,7 +53,7 @@ guess(State1,State2,GuessHist,Guess):-
             constSteps(X1-Y1,NR,NC,EN,Guess1,OldSteps,NewSteps1),
             append(GuessHist,Guess1,GuessHist2),
             Info2 = [NR,NC,ENP],
-            guess([OldMap,NewSteps1,Info2],State2,GuessHist2,Guess)
+            travMap([OldMap,NewSteps1,Info2],State2,GuessHist2,Guess)
     ;   State2 = State1,
         Guess = GuessHist
         ).
