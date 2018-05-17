@@ -7,8 +7,9 @@
 %%      -> A list of steps (planned to traverse)
 %%      -> informations that is needed thoughout the guess, such as 
 %%         map size and energy
+%%      -> instructions for shooting
 %% format of Map: [Empty,Pit,Wall,Wumpus]. Each is a list of of X-Y
-initialState(NR,NC,XS,YS,[[[XS-YS],[],[],0-0],[XS-YS],[NR,NC,100]]).
+initialState(NR,NC,XS,YS,[[[XS-YS],[],[],0-0],[XS-YS],[NR,NC,100],[]]).
 
 
 %% ===================================================================
@@ -22,7 +23,7 @@ initialState(NR,NC,XS,YS,[[[XS-YS],[],[],0-0],[XS-YS],[NR,NC,100]]).
 %% Map [[X,Y,_]]-> Map construction from the last robot
 %% Steps [X-Y]-> traversed blocks following the sequence of Guess
 guess(State1,State2,Guess):-
-    State1 = [Map,_,_],
+    State1 = [Map,_,_,_],
     Map = [_,_,_,Wumpus],
     (   Wumpus == 0-0 ->
         %% wumpus not found
@@ -42,7 +43,7 @@ guess(State1,State2,Guess):-
 
 
 travMap(State1,State2,GuessHist,Guess):-
-    State1 = [OldMap,OldSteps,Info],
+    State1 = [OldMap,OldSteps,Info,Inst],
     OldSteps = [X1-Y1|_],
     Info = [NR,NC,EN],
     myL(OldSteps,S), MS is NR * NC,
@@ -53,7 +54,7 @@ travMap(State1,State2,GuessHist,Guess):-
             constSteps(X1-Y1,NR,NC,EN,Guess1,OldSteps,NewSteps1),
             append(GuessHist,Guess1,GuessHist2),
             Info2 = [NR,NC,ENP],
-            travMap([OldMap,NewSteps1,Info2],State2,GuessHist2,Guess)
+            travMap([OldMap,NewSteps1,Info2,Inst],State2,GuessHist2,Guess)
     ;   State2 = State1,
         Guess = GuessHist
         ).
@@ -145,13 +146,18 @@ myL([_|List],N):-
 
 %% [Half Done 16 May 2018] update new map, traversed history
 %% [Maybe Done 17 May 2018] Stores blocks in diff arrays
-updateState(State0,Guess,Feedback,[NewMap,NewSteps,NewInfo]):-
-    State0 = [OldMap,_,Info],
+updateState(State0,Guess,Feedback,State1):-
+    State0 = [OldMap,_,Info,Inst],
     Info = [NR,NC,_],
     NewInfo = [NR,NC,100],
     updateMap(OldMap,Guess,Feedback,Info,NewMap),
+    write(NewMap),
     map2List(NewMap,NMlist),
-    cop2Step(NMlist,NR,NC,NewSteps).
+    cop2Step(NMlist,NR,NC,NewSteps),
+%%    ( \+ member(wumpus,Feedback) ->
+%%          shootCol()
+%%      ),
+    State1 = [NewMap,NewSteps,NewInfo,Inst].
 
 % 
 
@@ -182,16 +188,16 @@ updateMap(X-Y,OldMap,Guess,Feedback,Info,NewMap):-
 consMap(BP,Fb,Map0,Map1):-
     Map0 = [Empty,Pit,Wall,Wumpus],
     (   Fb == pit ->
-            cont(BP,Pit,Pit1),
+            append(Pit,[BP],Pit1),
             Map1 = [Empty,Pit1,Wall,Wumpus]
     ;   Fb == wall ->
-            cont(BP,Wall,Wall1),
+            append(Wall,[BP],Wall1),
             Map1 = [Empty,Pit,Wall1,Wumpus]
     ;   Fb == wumpus ->
             Wumpus1 = BP,
             Map1 = [Empty,Pit,Wall,Wumpus1]
     ;   % temporarily ignoring smell and stench
-            cont(BP,Empty,Empty1),
+            append(Empty,[BP],Empty1),
             Map1 = [Empty1,Pit,Wall,Wumpus]
         ).
     
@@ -254,20 +260,46 @@ inBound(X,Y,R,C):-
     Y > 0,
     Y =< R.
 
-%% find a place that in sequence and not in pit or wall
-%% come up with a list of pairs (X-Y, Move)(as sometimes
-%% we need to move towards the wall)
-shotPos(Map,Pairs):-
-    Map = [_,Pit,Wall,XW-YW],
-    XRL is XW - 1, XRH = XW + 1,
-    YRL is YW - 1, YRH = YW + 1,
-    makePair().
 
-makePair(NR,NC,Wumpus,Pair):-
-    Wumpus = X-Y.
+shootCol(_,0,[]).
+shootCol(X,NR,[X-NR|List]):-
+    NR > 0, NR1 is NR - 1,
+    shootCol(X,NR1,List).
 
-myZ(_,0,[]).
-myZ(X,NR,[X-NR|List]):-
-    NR is NR1 + 1.
-    myZ(X,NR1,List).
+shootRow(_,0,[]).
+shootRow(Y,NC,[NC-Y|List]):-
+    NC > 0, NC1 is NC - 1,
+    shootRow(Y,NC1,List).
 
+%% [Done 17 May 2018] using map information to constructed
+%% a list of instructions [(X-Y, Move)] telling the destination
+%% and the next move.
+colPair([],_,[]).
+colPair(List,Map,NR,NC,List1):-
+    Map = [_,Pit,Wall,Wumpus],
+    append(Pit,Wall,L1),
+    append([Wumpus],L1,Flist),
+    colPair(List,Flist,NR,NC,[],List1).
+
+colPair([],_,_,_,Last,Last).
+colPair([Pos],_,_,_,Last,Last).
+colPair(List,Flist,NR,NC,List0,List1):-
+    Flist = [XW-YW|_],
+    List = [Pos|Plist],Plist = [NextPos|_],
+    (   \+ member(Pos,Flist), \+ member(NextPos,Flist) ->
+            Pos = X1-Y1, NextPos = X2-Y2,
+            Diff1 is abs(X1+Y1-YW-XW),
+            Diff2 is abs(X2+Y2-YW-XW),
+            (   Diff1 > Diff2 ->
+                    moveM(X1,Y1,X2,Y2,NR,NC,Move),
+                    NewPair = (X1-Y1,Move)
+            ;       moveM(X2,Y2,X1,Y1,NR,NC,Move),
+                    NewPair = (X2-Y2,Move)
+                ),
+            append([NewPair],List0,List2),
+            colPair(Plist,Flist,NR,NC,List2,List1)
+        ;
+            colPair(Plist,Flist,NR,NC,List0,List1)
+        ).
+
+    
