@@ -5,10 +5,9 @@
 %
 % By Renrui Liu, SID 950392, renruil@student.unimelb.edu.au
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%TODO:  1.State都存了，visited都改了，还是两条重复循环
+%TODO: 
 %       2.所有DontGo改成Avoid
-%       3.每次选出一个random的路线这样不会卡循环？
-%       3.1 或者想办法在fail后把fail的目的地加入Visited
+%       3.getwallposition有问题，不存在的wall加入了Dontgo
 
 :- module(wumpus,[initialState/5, guess/3, updateState/4]).
 
@@ -34,9 +33,17 @@ guess(State0, State, Guess):-
     (   \+ WumpusPosition == unknown ->
         write(进入射击),nl,
         member(SPos1,ShootPositions),
+        (   getShootPath1(StartPoint,SPos1,WumpusPosition,Dontgo,SPath1) ->
+                SPath = SPath1,
+                write(射击点是),nl,
+                write(SPos1),nl,
+                NewShootPos = ShootPositions;
+                delete(ShootPositions,SPos1,NewShootPos)
+            ),
         getShootPath1(StartPoint,SPos1,WumpusPosition,Dontgo,SPath),
         append(SPath,[shoot],Guess),
-        State = State0,
+        State = (Visited,Info,NewShootPos,Dontgo),
+        %
         write(射击出去),nl
         ;
         
@@ -44,17 +51,13 @@ guess(State0, State, Guess):-
         write(进入explore),nl,
         Border = (NR,NC),
         getCords(NR,NC,Cords,[]),
-        subtract(Cords,Visited,AllUnVisited),
+        subtract(Cords,Visited,UnVisitedLst),
         write(探索目的地包括),nl,
-        write(AllUnVisited),nl,
+        write(UnVisitedLst),nl,
 
     % 想办法在fail后把fail的目的地加入Visited
-        %getRandomElement(AllUnVisited,UnVisited),
-        member(UnVisited,AllUnVisited),
-        write(探索目的地是),nl,
-        write(UnVisited),nl,
-        find(StartPoint,UnVisited,Dontgo,Guess),
-        State = State0,
+        exploreMap(StartPoint,UnVisitedLst,Dontgo,Visited,NewVisited,Guess),
+        State = (NewVisited,Info,ShootPositions,Dontgo),
         write(explore出去),nl
     ).
 
@@ -76,13 +79,9 @@ updateState(State0, Guess, Feedback, State):-
         (member(wall,Feedback) ->
             write(进入wall),nl,
             getWallPositions(StartPoint,Feedback,LenGuess,WallPositions,[]),
-            write(进入wall1),nl,
-        % Get true Path (Dont know why it returns 2 same results)
-            findall(TruePaths,getTruePath(Feedback,LenGuess,TruePaths),AllTruePaths),
-            last(AllTruePaths,TruePath),        
+            limit(1,getTruePath(Feedback,LenGuess,TruePath)),  
         % Append the path and wall position into Visited, and wall into Dontgo
             recordPath(StartPoint,TruePath,TrueVisited,[]),
-            
             append(TrueVisited,WallPositions,WallUpdateVisited),
             append(WallUpdateVisited,Visited,NewVisited),
             append(WallPositions,Dontgo,Dontgo1),
@@ -110,7 +109,7 @@ updateState(State0, Guess, Feedback, State):-
     % Found Wumpus
         (member(wumpus,Feedback) ->
             write(找到wumpus了),nl,
-            find(StartPoint,WumpusPosition,TruePath),
+            backTrack(StartPoint,TruePath,WumpusPosition),
         % Add WumpusPosition into info and DontGo
             NewInfo = [Border,StartPoint,WumpusPosition],
             append([WumpusPosition],Dontgo1,NewDontgo),
@@ -141,9 +140,7 @@ updateState(State0, Guess, Feedback, State):-
         (member(wall,Feedback) ->
             write(在射击途中撞墙),nl,
             getWallPositions(StartPoint,Feedback,Guess1,WallPositions,[]),
-        % Get true Path (Dont know why it returns 2 same results)
-            findall(TruePaths,getTruePath(Feedback,Guess1,TruePaths),AllTruePaths),
-            last(AllTruePaths,TruePath),            
+            limit(1,getTruePath(Feedback,LenGuess,TruePath)),          
         % Append the path and wall position to Visited, and wall to Dontgo
             recordPath(StartPoint,TruePath,TrueVisited,[]),
             append(TrueVisited,WallPositions,WallUpdateVisited),
@@ -157,8 +154,8 @@ updateState(State0, Guess, Feedback, State):-
             ),
 
     % Fell into a pit
-        (member(pit,Feedback) ->               
-            find(StartPoint,PitPosition,TruePath),
+        (member(pit,Feedback) ->
+            backTrack(StartPoint,TruePath,PitPosition),
         % Add Pit to Dontgo
             append([PitPosition],Dontgo1,NewDontgo),
             subtract(ShootPos, NewDontgo, NewShootPos);
@@ -171,7 +168,7 @@ updateState(State0, Guess, Feedback, State):-
     % Position and Direction are right, but missed (A wall in between)
         NewVisited = [TrueShootPos|_],
         delete(Guess,shoot,Guess0),
-        find(StartPoint,IdealShootPos,Guess0),
+        backTrack(StartPoint,Guess0,IdealShootPos),
         IdealShootPos =  (SX,SY),
         WumpusPos = (WX,WY),
         (TrueShootPos == IdealShootPos, checkShootPath(SX,WX,SY,WY,TruePath) ->
@@ -195,6 +192,7 @@ getTruePath(Feedback,Guess,TruePath):-
         TruePath = Guess
         ).
 
+%这块有问题，不存在的wall加入了Dontgo
 getWallPositions(StartPoint,Feedback,Guess,WallPositions,A):-
     findall(W,(nth1(W,Feedback,wall)),Walls),
     (Walls == [] ->
@@ -214,8 +212,10 @@ getWallPositions(StartPoint,Feedback,Guess,WallPositions,A):-
         % Get new StartPoint after the robot hit a wall
             Wall1 is Wall - 1,
             takeN(Wall1,Guess,PathToNewStartPoint),
-            find(StartPoint,NewStartPoint,PathToNewStartPoint),
-            getWallPositions(NewStartPoint,RestFeedback,RestGuess,WallPositions,A1)
+            backTrack(StartPoint,PathToNewStartPoint,NewStartPoint),
+            getWallPositions(NewStartPoint,RestFeedback,RestGuess,WallPositions,A1),
+            write(这里是wall的坐标),nl,
+            write(WallPositions),nl
             ;
         % Hit the Border, Dont record that
             getWallPositions(StartPoint,RestFeedback,RestGuess,WallPositions,A)
@@ -224,7 +224,7 @@ getWallPositions(StartPoint,Feedback,Guess,WallPositions,A):-
 
 recordPath(_,[],UpdatedVisited,UpdatedVisited).
 recordPath(StartPoint,[Direction|RestGuess],UpdatedVisited,A):-
-    find(StartPoint,Stop,[Direction]),
+    backTrack(StartPoint,[Direction],Stop),
     append([Stop],A,A1),
     recordPath(Stop,RestGuess,UpdatedVisited,A1).
 
@@ -287,6 +287,11 @@ find(StartPoint, Destination, Previous, [Direction|Path]) :-
     \+ member(Stop, Previous),
     find(Stop, Destination, [Stop|Previous], Path).
 
+backTrack(StartPoint,[],StartPoint).
+backTrack(StartPoint,[Direction|Path],Destination):-
+    edge(StartPoint, Direction,Stop),
+    backTrack(Stop, Path, Destination).
+
 buildMap([],_,_).
 buildMap([(X,Y)|RestCords],NR,NC):-
     EX is X + 1,
@@ -348,9 +353,16 @@ aTob1(A,B):-
     assert(edge(A,north,B))
     ).
 
-getRandomElement([], []).
-getRandomElement(List, Elt) :-
-        length(List, Length),
-        random(0, Length, Index),
-        nth0(Index, List, Elt).
+exploreMap(StartPoint,UnVisitedLst,Dontgo,Visited,NewVisited,Guess):-
+    random_permutation(UnVisitedLst,RandomLst),
+    member(UnVisited,RandomLst),
+    (
+        write(探索目的地是),nl,
+        write(UnVisited),nl,
+        find(StartPoint,UnVisited,Dontgo,Path) ->
+            Guess = Path,
+            NewVisited = Visited
+            ;
+        append([UnVisited],Visited,NewVisited)
+        ).
 
