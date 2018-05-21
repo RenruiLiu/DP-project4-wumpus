@@ -13,7 +13,7 @@ find(Start, End, Previous, [Dirn|Path]) :-
     find(Med, End, [Med|Previous], Path).
 
 %% map represented as facts
-%% a - b - c
+%% a - b - c - q
 %%     |   |
 %% k - d - e - f
 %%     |   |   |
