@@ -1,13 +1,21 @@
 % Declarative Programming Project 4
 %
 % This program is for playing wumpus game 
-% which is basically sending robots to hunt wumpus
+% which is basically sending robots to hunt wumpus in given maps
 %
 % By Renrui Liu, SID 950392, renruil@student.unimelb.edu.au
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%TODO: 
-%       1.所有DontGo改成Avoid
-%       2.find老问题，大地图 (1.找射击路径，2.找猜测路径)
+% State = (Visited coordinates, Information, Shoot Positions, Places to avoid)
+%                                   /\
+%           [Broders of the map, Start Position, Wumpus Position]
+%
+% The Ider now is sending robots to random coordinates in order to explore the map, 
+% after a robot finds wumpus, robots will be sent to shoot positions and tried to 
+% shoot him. 
+%
+% TODO: 
+%       1. Sometimes Can't find correct paths in 7X7 big map
+%       2. Making Use of Odor 
 
 :- module(wumpus,[initialState/5, guess/3, updateState/4]).
 
@@ -31,18 +39,12 @@ guess(State0, State, Guess):-
     sort(Dontgo1,Dontgo), % delete duplicates
 
     (   \+ WumpusPosition == unknown ->
-        write(进入射击),nl,
     % try to shoot 
         random_permutation(ShootPositions,RandomShootPosLst),
         member(ShootPos,RandomShootPosLst),
-        write(射击点是),nl,
-        write(ShootPos),nl,
-    % 射击和起始点一样
         (   StartPoint == ShootPos ->
             % if the shoot position is the start point
-                write(射击点一样),nl,
-                getShootPath2(StartPoint,WumpusPosition,Visited,Dontgo,SPath),
-                write(这里过了),nl;   
+                getShootPath2(StartPoint,WumpusPosition,Visited,Dontgo,SPath);
             (   getShootPath1(StartPoint,ShootPos,WumpusPosition,Dontgo,SPath1)
                  ->
                     SPath = SPath1,
@@ -53,28 +55,21 @@ guess(State0, State, Guess):-
             getShootPath1(StartPoint,ShootPos,WumpusPosition,Dontgo,SPath)
         ),
         append(SPath,[shoot],Guess),
-        State = (Visited,Info,NewShootPos,Dontgo),
-        write(射击出去),nl
+        State = (Visited,Info,NewShootPos,Dontgo)
         ;
         
     % Don't know Wumpus position, keep exploring
-        write(进入explore),nl,
         Border = (NR,NC),
         getCords(NR,NC,Cords,[]),
         subtract(Cords,Visited,UnVisitedLst),
     % explore those UnVisited places 
-        write(探索目的地包括),nl,
-        write(UnVisitedLst),nl,
         exploreMap(StartPoint,UnVisitedLst,Dontgo,Visited,NewVisited,Guess),
-        State = (NewVisited,Info,ShootPositions,Dontgo),
-        write(explore出去),nl
+        State = (NewVisited,Info,ShootPositions,Dontgo)
     ).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%        
 
 updateState(State0, Guess, Feedback, State):-
-    write(Guess),nl,
-    write(Feedback),nl,
     State0 = (Visited,Info,ShootPos,Dontgo),
     Info = [Border,StartPoint,WumpusPos],
 
@@ -86,17 +81,15 @@ updateState(State0, Guess, Feedback, State):-
 
     % Hit a wall
         (member(wall,Feedback) ->
-            write(进入wall),nl,
         % get the wall positions and 
         % what are the coordinates just visited
             getWallPositions(StartPoint,Feedback,LenGuess,WallPositions,[]),
-            limit(1,getTruePath(Feedback,LenGuess,TruePath)),  
+            getTruePath(Feedback,LenGuess,TruePath),
             recordPath(StartPoint,TruePath,TrueVisited,[]),
         % Append the path and wall position into Visited, and wall into Dontgo
             append(TrueVisited,WallPositions,WallUpdateVisited),
             append(WallUpdateVisited,Visited,NewVisited),
-            append(WallPositions,Dontgo,Dontgo1),
-            write(wall出去了),nl
+            append(WallPositions,Dontgo,Dontgo1)
             ;
 
         % Didn't meet any walls
@@ -108,39 +101,33 @@ updateState(State0, Guess, Feedback, State):-
 
     % Fell in a pit
         (member(pit,Feedback) ->
-            write(掉进pit),nl,
         % Add Pit to Dontgo
             backTrack(StartPoint,TruePath,PitPosition),
             append([PitPosition],Dontgo1,NewDontgo),
-            State = (NewVisited, Info, ShootPos, NewDontgo),
-            write(pit出来了),nl
+            State = (NewVisited, Info, ShootPos, NewDontgo)
             ;
             write(noPits),nl
             ),
 
     % Found Wumpus
         (member(wumpus,Feedback) ->
-            write(找到wumpus了),nl,
             backTrack(StartPoint,TruePath,WumpusPosition),
         % Add WumpusPosition into info and DontGo
             NewInfo = [Border,StartPoint,WumpusPosition],
             append([WumpusPosition],Dontgo1,NewDontgo),
         % Calculate all shoot Positions
             getShootPositions(Border,WumpusPosition,AllShootPos),
-            State = (NewVisited, NewInfo, AllShootPos, NewDontgo),
-            write(wumpus出去了),nl
+            State = (NewVisited, NewInfo, AllShootPos, NewDontgo)
             ;
             write(noWumpus),nl
             ),
 
     % Didn't meet any pits or wumpus
         (\+ member(wumpus,Feedback) , \+ member(pit,Feedback) ->
-            write(没wumpus没pit),nl,
             sort(NewVisited,SortVisited),
-            State = (SortVisited, Info, ShootPos, Dontgo1),
-            write(从updateState出去了1),nl;
-            %有wumpus或者pit，但state都已经被处理了
-            write(从updateState出去了2),nl
+            State = (SortVisited, Info, ShootPos, Dontgo1)
+            ;
+            write(1),nl % meaningless
             )
         ;
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -149,9 +136,8 @@ updateState(State0, Guess, Feedback, State):-
 
     % Hit a wall
         (member(wall,Feedback) ->
-            write(在射击途中撞墙),nl,
             getWallPositions(StartPoint,Feedback,Guess1,WallPositions,[]),
-            limit(1,getTruePath(Feedback,Guess1,TruePath)),        
+            getTruePath(Feedback,Guess1,TruePath),        
         % Append the path and wall position to Visited, and wall to Dontgo
             recordPath(StartPoint,TruePath,TrueVisited,[]),
             append(TrueVisited,WallPositions,WallUpdateVisited),
@@ -184,14 +170,12 @@ updateState(State0, Guess, Feedback, State):-
         IdealShootPos =  (SX,SY),
         WumpusPos = (WX,WY),
         (TrueShootPos == IdealShootPos, checkShootPath(SX,WX,SY,WY,TruePath) ->
-            write(删射击点了),nl,
         % delete this shoot position
             delete(NewShootPos,IdealShootPos,NewShootPos1);
             NewShootPos1 = NewShootPos
             ),
 
-        State = (NewVisited, Info, NewShootPos1, NewDontgo),
-        write(从updateState出去了3),nl
+        State = (NewVisited, Info, NewShootPos1, NewDontgo)
         ).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -397,9 +381,7 @@ exploreMap(StartPoint,UnVisitedLst,Dontgo,Visited,NewVisited,Guess):-
     random_permutation(UnVisitedLst,RandomLst),
     member(UnVisited,RandomLst),
     (
-        write(探索目的地是),nl,
-        write(UnVisited),nl,
-        write(卡在这),nl, find(StartPoint,UnVisited,Dontgo,Path) ->
+        find(StartPoint,UnVisited,Dontgo,Path) ->
             Guess = Path,
             NewVisited = Visited
             ;
