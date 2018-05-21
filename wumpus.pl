@@ -12,10 +12,6 @@
 initialState(NR,NC,XS,YS,[[[XS-YS],[],[],0-0],[XS-YS],[NR,NC,100],[]]).
 
 
-%% ===================================================================
-%% *******************************************************************
-
-
 %% [Half Done 16 May 2018] Able to traverse all blocks in the map 
 %% routes does not guarantee a non repetition list (possibly traverse 
 %% a block for several times)
@@ -23,14 +19,38 @@ initialState(NR,NC,XS,YS,[[[XS-YS],[],[],0-0],[XS-YS],[NR,NC,100],[]]).
 %% Map [[X,Y,_]]-> Map construction from the last robot
 %% Steps [X-Y]-> traversed blocks following the sequence of Guess
 guess(State1,State2,Guess):-
+    nl,write("Update output: "),write(State1),
     State1 = [Map,_,_,_],
     Map = [_,_,_,Wumpus],
     (   Wumpus == 0-0 ->
         %% wumpus not found
         travMap(State1,State2,[],Guess)
-    ;   write(1)
+    ;   write("try to shoot"),   
+    tryShoot(State1,State2,Guess)
         ).
-%%    travMap(State1,State2,[],Guess).
+
+
+%% [Half Done 16 May 2018] update new map, traversed history
+%% [Maybe Done 17 May 2018] Stores blocks in diff arrays
+updateState(State0,Guess,Feedback,State1):-
+    nl,write("Guess -- State: "), write(State0),nl,write(" | Guesses: "),write(Guess),nl,write(" | Feedback: "),write(Feedback),nl,
+    State0 = [OldMap,_,Info,Inst],
+    Info = [NR,NC,_],
+    NewInfo = [NR,NC,100],
+    updateMap(OldMap,Guess,Feedback,Info,NewMap),
+    map2List(NewMap,NMlist),
+    cop2Step(NMlist,NR,NC,NewSteps),
+    NewMap = [_,_,_,Wumpus],
+    (   Wumpus == 0-0 ->
+            State1 = [NewMap,NewSteps,NewInfo,Inst]
+        ;
+            makePair(NewMap,NR,NC,NewInst),
+            State1 = [NewMap,NewSteps,NewInfo,NewInst]
+        )
+
+    .
+
+
 
 %% Sequence
 %% -> if not running out of energy or the map is supposed to be traversed
@@ -40,8 +60,6 @@ guess(State1,State2,Guess):-
 %%      -> Call itself
 %% -> if map is done or run out of energy
 %%      -> Guess and State will be the same as last one
-
-
 travMap(State1,State2,GuessHist,Guess):-
     State1 = [OldMap,OldSteps,Info,Inst],
     OldSteps = [X1-Y1|_],
@@ -49,14 +67,37 @@ travMap(State1,State2,GuessHist,Guess):-
     myL(OldSteps,S), MS is NR * NC,
     (   EN > 0, S < MS->
             nextDes(NR,NC,OldSteps,XP,YP),
-            write(XP),write(YP),nl,
+            write("Next Destination: "),write(XP),write(YP),nl,
             findPath(X1,Y1,XP,YP,EN,ENP,NR,NC,OldMap,Guess1),
             constSteps(X1-Y1,NR,NC,EN,Guess1,OldSteps,NewSteps1),
+            write("Next Steps: "),write(NewSteps1),nl,
             append(GuessHist,Guess1,GuessHist2),
             Info2 = [NR,NC,ENP],
             travMap([OldMap,NewSteps1,Info2,Inst],State2,GuessHist2,Guess)
     ;   State2 = State1,
         Guess = GuessHist
+        ).
+
+
+tryShoot(State1,State2,Guess):-
+    State1=[_,[X-Y|_],_,_],
+    tryShoot(State1,State2,[shoot],X-Y,Guess).
+
+
+tryShoot([Map,Steps,Info,[]],State2,GuessHist,_,Guess):-
+%%    write('[[End of Loop: ]]'),
+    State2=[Map,Steps,Info,[]],
+    Guess = GuessHist.
+tryShoot(State1,State2,GuessHist,X-Y,Guess):-
+    State1 = [Map,OldSteps,Info,Inst],
+    Info = [NR,NC,EN],
+    Inst = [(XD-YD,Move)|Instlist],
+    findPath(X,Y,XD,YD,EN,END,NR,NC,Map,Guess1),
+    (EN > 6 ->
+        append(GuessHist,Guess1,Guess2),
+        append(Guess2,[Move],Guess3),
+        append(Guess3,[shoot],Guess),
+        State2 = State1
         ).
 
 
@@ -78,17 +119,21 @@ findPath(X,Y,X1,Y1,EN,EN1,NR,NC,Map,Path):-
 findPath(_,_,_,_,0,0,_,_,_,_Hist,[]).
 findPath(X,Y,X,Y,EN,EN,_,_,_,_Hist,[]).
 findPath(X1,Y1,X2,Y2,EN,EN2,NR,NC,Map,Hist,[NMove|Guess]):-
-    EN > 0,Map = [_,Pit,Wall,_],
+(    EN > 0 ->
+    Map = [_,Pit,Wall,Wumpus],
     move(X1,Y1,XP,YP,EN,ENP,NR,NC,NMove),
     Step = XP-YP,
     \+ member(Step,Hist),
-    \+ member(Step,Wall),
+    \+ member(Step,[Wumpus]),
     \+ member(Step,Pit),
-    findPath(XP,YP,X2,Y2,ENP,EN2,NR,NC,Map,[Step|Hist],Guess).
+
+    findPath(XP,YP,X2,Y2,ENP,EN2,NR,NC,Map,[Step|Hist],Guess)
+    ).
 
 
 %% [Done 15 May 2018] able to construct list of traversed blocks using
-%% set of instructions
+%% set of instructions, if the block has been traversed before, it will 
+%% not be added to the steps
 constSteps(_,_,_,_,[],OldSteps,OldSteps).
 constSteps(X-Y,NR,NC,EN,[Move|Guess],OldSteps,NewSteps):-
     move(X,Y,X1,Y1,EN,EN1,NR,NC,Move),
@@ -100,6 +145,9 @@ constSteps(X-Y,NR,NC,EN,[Move|Guess],OldSteps,NewSteps):-
 
 
 %% [Done 15 May 2018] moving instructions
+move(EN,ENN,shoot):-
+    ENN is EN - 5.
+
 move(X,Y,XN,YN,EN,ENN,_,_,north):-
     (   Y > 1 ->
             YN is Y - 1,
@@ -144,20 +192,7 @@ myL([_|List],N):-
 %% ************************************************************************
 
 
-%% [Half Done 16 May 2018] update new map, traversed history
-%% [Maybe Done 17 May 2018] Stores blocks in diff arrays
-updateState(State0,Guess,Feedback,State1):-
-    State0 = [OldMap,_,Info,Inst],
-    Info = [NR,NC,_],
-    NewInfo = [NR,NC,100],
-    updateMap(OldMap,Guess,Feedback,Info,NewMap),
-    write(NewMap),
-    map2List(NewMap,NMlist),
-    cop2Step(NMlist,NR,NC,NewSteps),
-%%    ( \+ member(wumpus,Feedback) ->
-%%          shootCol()
-%%      ),
-    State1 = [NewMap,NewSteps,NewInfo,Inst].
+
 
 % 
 
@@ -179,8 +214,13 @@ updateMap(X-Y,OldMap,Guess,Feedback,Info,NewMap):-
     moveM(X,Y,X1,Y1,NR,NC,Move),
     (   \+ member(X1-Y1,Mlist) ->
             consMap(X1-Y1,Fb,OldMap,NewMap1),
-            updateMap(X1-Y1,NewMap1,Glist,Fblist,Info,NewMap)
-    ;       updateMap(X1-Y1,OldMap,Glist,Fblist,Info,NewMap)
+            (   Fb == wall ->
+                updateMap(X-Y,NewMap1,Glist,Fblist,Info,NewMap)
+            ;   updateMap(X1-Y1,NewMap1,Glist,Fblist,Info,NewMap)
+                )
+            
+    ;   
+        updateMap(X1-Y1,OldMap,Glist,Fblist,Info,NewMap)
         ).
 %% 
 
@@ -215,9 +255,10 @@ cop2Step(Map,NR,NC,Steps):-
     ).
 
 map2List(Map,List):-
-    Map = [Empty,Pit,Wall,_],
+    Map = [Empty,Pit,Wall,Wumpus],
     append(Empty,Pit,List0),
-    append(List0,Wall,List).
+    append(List0,Wall,List1),
+    append(List1,[Wumpus],List).
 
 %% [Done 16 May 2018] get status of next block using current position,
 %% movement and feedback
@@ -274,16 +315,19 @@ shootRow(Y,NC,[NC-Y|List]):-
 %% [Done 17 May 2018] using map information to constructed
 %% a list of instructions [(X-Y, Move)] telling the destination
 %% and the next move.
-colPair([],_,[]).
-colPair(List,Map,NR,NC,List1):-
+makePair(Map,NR,NC,List):-
     Map = [_,Pit,Wall,Wumpus],
     append(Pit,Wall,L1),
     append([Wumpus],L1,Flist),
-    colPair(List,Flist,NR,NC,[],List1).
+    Wumpus = X-Y,
+    shootCol(X,NR,ListC), shootRow(Y,NC,ListR),
+    makePair(ListC,Flist,NR,NC,[],List1),
+    makePair(ListR,Flist,NR,NC,[],List2),
+    append(List1,List2,List).
 
-colPair([],_,_,_,Last,Last).
-colPair([Pos],_,_,_,Last,Last).
-colPair(List,Flist,NR,NC,List0,List1):-
+makePair([],_,_,_,Last,Last).
+makePair([Pos],_,_,_,Last,Last).
+makePair(List,Flist,NR,NC,List0,List1):-
     Flist = [XW-YW|_],
     List = [Pos|Plist],Plist = [NextPos|_],
     (   \+ member(Pos,Flist), \+ member(NextPos,Flist) ->
@@ -297,9 +341,8 @@ colPair(List,Flist,NR,NC,List0,List1):-
                     NewPair = (X2-Y2,Move)
                 ),
             append([NewPair],List0,List2),
-            colPair(Plist,Flist,NR,NC,List2,List1)
+            makePair(Plist,Flist,NR,NC,List2,List1)
         ;
-            colPair(Plist,Flist,NR,NC,List0,List1)
+            makePair(Plist,Flist,NR,NC,List0,List1)
         ).
 
-    
