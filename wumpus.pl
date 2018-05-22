@@ -8,8 +8,9 @@
 %%      -> informations that is needed thoughout the guess, such as 
 %%         map size and energy
 %%      -> instructions for shooting
-%% format of Map: [Empty,Pit,Wall,Wumpus]. Each is a list of of X-Y
-initialState(NR,NC,XS,YS,[[[XS-YS],[],[],0-0],[XS-YS],[NR,NC,100],[]]).
+%% format of Map: [Empty,Pit,Wall,Suspicious,Wumpus]. Each is a list of of X-Y
+initialState(NR,NC,XS,YS,[[[XS-YS],[],Wall,[],0-0],[XS-YS],[NR,NC,100],[]]):-
+    createWall(NR,NC,Wall).
 
 
 %% [Half Done 16 May 2018] Able to traverse all blocks in the map 
@@ -21,7 +22,7 @@ initialState(NR,NC,XS,YS,[[[XS-YS],[],[],0-0],[XS-YS],[NR,NC,100],[]]).
 guess(State1,State2,Guess):-
     nl,write("Update output: "),write(State1),
     State1 = [Map,_,_,_],
-    Map = [_,_,_,Wumpus],
+    Map = [_,_,_,_,Wumpus],
     (   Wumpus == 0-0 ->
         %% wumpus not found
         travMap(State1,State2,[],Guess)
@@ -40,7 +41,7 @@ updateState(State0,Guess,Feedback,State1):-
     updateMap(OldMap,Guess,Feedback,Info,NewMap),
     map2List(NewMap,NMlist),
     cop2Step(NMlist,NR,NC,NewSteps),
-    NewMap = [_,_,_,Wumpus],
+    NewMap = [_,_,_,_,Wumpus],
     (   Wumpus == 0-0 ->
             State1 = [NewMap,NewSteps,NewInfo,Inst]
         ;
@@ -66,14 +67,14 @@ travMap(State1,State2,GuessHist,Guess):-
     Info = [NR,NC,EN],
     myL(OldSteps,S), MS is NR * NC,
     (   EN > 0, S < MS->
-            nextDes(NR,NC,OldSteps,XP,YP),
+            nextDes(NR,NC,OldSteps,OldMap,XP,YP,NewMap),
             write("Next Destination: "),write(XP),write(YP),nl,
-            findPath(X1,Y1,XP,YP,EN,ENP,NR,NC,OldMap,Guess1),
+            findPath(X1,Y1,XP,YP,EN,ENP,NR,NC,NewMap,Guess1),
             constSteps(X1-Y1,NR,NC,EN,Guess1,OldSteps,NewSteps1),
             write("Next Steps: "),write(NewSteps1),nl,
             append(GuessHist,Guess1,GuessHist2),
             Info2 = [NR,NC,ENP],
-            travMap([OldMap,NewSteps1,Info2,Inst],State2,GuessHist2,Guess)
+            travMap([NewMap,NewSteps1,Info2,Inst],State2,GuessHist2,Guess)
     ;   State2 = State1,
         Guess = GuessHist
         ).
@@ -89,11 +90,11 @@ tryShoot([Map,Steps,Info,[]],State2,GuessHist,_,Guess):-
     State2=[Map,Steps,Info,[]],
     Guess = GuessHist.
 tryShoot(State1,State2,GuessHist,X-Y,Guess):-
-    State1 = [Map,OldSteps,Info,Inst],
+    State1 = [Map,_,Info,Inst],
     Info = [NR,NC,EN],
-    Inst = [(XD-YD,Move)|Instlist],
+    Inst = [(XD-YD,Move)|_],
     findPath(X,Y,XD,YD,EN,END,NR,NC,Map,Guess1),
-    (EN > 6 ->
+    (END > 6 ->
         append(GuessHist,Guess1,Guess2),
         append(Guess2,[Move],Guess3),
         append(Guess3,[shoot],Guess),
@@ -103,12 +104,30 @@ tryShoot(State1,State2,GuessHist,X-Y,Guess):-
 
 %% [Done 15 May 2018] X, Y that is not traversed
 %% [Improved 16 May 2018] auto-generate until X Y is good
-nextDes(NR,NC,Steps,X,Y):-
+nextDes(NR,NC,Steps,Map,X,Y,Map1):-
     random_between(1,NC,X1),
     random_between(1,NR,Y1),
+
+    %% if X1-Y1 has not been traversed in this round
     (   \+ member(X1-Y1,Steps)->
-            X is X1,Y is Y1
-    ;   nextDes(NR,NC,Steps,X,Y)
+
+        %% if X1-Y1 is not part of the suspicious queue, 
+        %% then X1-Y1 is approachable, suspicious queue does
+        %% not need to update
+        (   \+unapproachable(X1-Y1,Map) ->
+            X is X1,Y is Y1,
+            Map1 = Map
+
+        %% if X1-Y1 is part of the suspicious queue, then it is 
+        %% not approachable, need to generate a new one
+        ;   Map = [Empty,Pit,Wall,Suspicious,Wumpus],
+            append(Suspicious,[X1-Y1],Suspicious1),
+            Map0 = [Empty,Pit,Wall,Suspicious1,Wumpus],
+            nextDes(NR,NC,Steps,Map0,X,Y,Map1)
+            )
+       %% if X1-Y1 has been travered in this round, it is not usable,
+       %% need to genrate a new one.
+    ;   nextDes(NR,NC,Steps,Map,X,Y,Map1)
     ) .
 
 
@@ -120,7 +139,7 @@ findPath(_,_,_,_,0,0,_,_,_,_Hist,[]).
 findPath(X,Y,X,Y,EN,EN,_,_,_,_Hist,[]).
 findPath(X1,Y1,X2,Y2,EN,EN2,NR,NC,Map,Hist,[NMove|Guess]):-
 (    EN > 0 ->
-    Map = [_,Pit,Wall,Wumpus],
+    Map = [_,Pit,Wall,Suspicious,Wumpus],
     move(X1,Y1,XP,YP,EN,ENP,NR,NC,NMove),
     Step = XP-YP,
     \+ member(Step,Hist),
@@ -201,7 +220,7 @@ myL([_|List],N):-
 %% instructions and feedback. output -> NewMap
 
 updateMap(OldMap,Guess,Feedback,Info,NewMap):-
-    OldMap = [Empty,_,_,_],Empty = [X-Y|_],
+    OldMap = [Empty,_,_,_,_],Empty = [X-Y|_],
     updateMap(X-Y,OldMap,Guess,Feedback,Info,NewMap).
 
 
@@ -226,19 +245,20 @@ updateMap(X-Y,OldMap,Guess,Feedback,Info,NewMap):-
 
 
 consMap(BP,Fb,Map0,Map1):-
-    Map0 = [Empty,Pit,Wall,Wumpus],
+    write("constructing... "),write(BP),write(" "),write(Fb),write(" "),nl,
+    Map0 = [Empty,Pit,Wall,Suspicious,Wumpus],
     (   Fb == pit ->
             append(Pit,[BP],Pit1),
-            Map1 = [Empty,Pit1,Wall,Wumpus]
+            Map1 = [Empty,Pit1,Wall,Suspicious,Wumpus]
     ;   Fb == wall ->
             append(Wall,[BP],Wall1),
-            Map1 = [Empty,Pit,Wall1,Wumpus]
+            Map1 = [Empty,Pit,Wall1,Suspicious,Wumpus]
     ;   Fb == wumpus ->
             Wumpus1 = BP,
-            Map1 = [Empty,Pit,Wall,Wumpus1]
+            Map1 = [Empty,Pit,Wall,Suspicious,Wumpus1]
     ;   % temporarily ignoring smell and stench
             append(Empty,[BP],Empty1),
-            Map1 = [Empty1,Pit,Wall,Wumpus]
+            Map1 = [Empty1,Pit,Wall,Suspicious,Wumpus]
         ).
     
 
@@ -255,10 +275,11 @@ cop2Step(Map,NR,NC,Steps):-
     ).
 
 map2List(Map,List):-
-    Map = [Empty,Pit,Wall,Wumpus],
+    Map = [Empty,Pit,Wall,Suspicious,Wumpus],
     append(Empty,Pit,List0),
     append(List0,Wall,List1),
-    append(List1,[Wumpus],List).
+    append(List1,Suspicious,List2),
+    append(List2,[Wumpus],List).
 
 %% [Done 16 May 2018] get status of next block using current position,
 %% movement and feedback
@@ -316,9 +337,10 @@ shootRow(Y,NC,[NC-Y|List]):-
 %% a list of instructions [(X-Y, Move)] telling the destination
 %% and the next move.
 makePair(Map,NR,NC,List):-
-    Map = [_,Pit,Wall,Wumpus],
+    Map = [_,Pit,Wall,Suspicious,Wumpus],
     append(Pit,Wall,L1),
-    append([Wumpus],L1,Flist),
+    append(L1,Suspicious,L2),
+    append([Wumpus],L2,Flist),
     Wumpus = X-Y,
     shootCol(X,NR,ListC), shootRow(Y,NC,ListR),
     makePair(ListC,Flist,NR,NC,[],List1),
@@ -346,3 +368,41 @@ makePair(List,Flist,NR,NC,List0,List1):-
             makePair(Plist,Flist,NR,NC,List0,List1)
         ).
 
+createWall(NR,NC,Wall):-
+    NR1 is NR + 1, NC1 is NC + 1,
+    createRow(0,NC1,Wall1),
+    createRow(NR1,NC1,Wall2),
+    createCol(NR,0,Wall3),
+    createCol(NR,NC1,Wall4),
+
+    append(Wall1,Wall2,Wall12),
+    append(Wall3,Wall4,Wall34),
+    append(Wall12,Wall34,Wall).
+
+createRow(R,0,[R-0]).
+createRow(R,C,[R-C|Walllist]):-
+( C > 0 ->
+    C1 is C - 1,
+    createRow(R,C1,Walllist)
+    ).
+
+createCol(0,C,[]).
+createCol(R,C,[R-C|Walllist]):-
+(   R > 0 ->
+    R1 is R - 1,
+    createCol(R1,C,Walllist)
+    ).
+
+
+%% check if X-Y is surrounded by walls and pits
+unapproachable(X-Y,Map):-
+    X1 is X - 1, X2 is X + 1,
+    Y1 is Y - 1, Y2 is Y + 1,
+    Map=[_,Pit,Wall,Suspicious,_],
+    append(Pit,Wall,List),
+    append(List,Suspicious,NotApprocable),
+    nl,write("unapproachable List: "),write(NotApprocable),nl,
+    member(X-Y2,NotApprocable),
+    member(X-Y1,NotApprocable),
+    member(X1-Y,NotApprocable),
+    member(X2-Y,NotApprocable).
