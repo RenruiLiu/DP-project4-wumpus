@@ -38,14 +38,13 @@ updateState(State0,Guess,Feedback,State1):-
     State0 = [OldMap,_,Info,Inst],
     Info = [NR,NC,_],
     NewInfo = [NR,NC,100],
-    updateMap(OldMap,Guess,Feedback,Info,NewMap),
+    updateMap(OldMap,Inst,Guess,Feedback,Info,NewMap,NewInst),
     map2List(NewMap,NMlist),
     cop2Step(NMlist,NR,NC,NewSteps),
     NewMap = [_,_,_,_,Wumpus],
     (   Wumpus == 0-0 ->
             State1 = [NewMap,NewSteps,NewInfo,Inst]
         ;
-            makePair(NewMap,NR,NC,NewInst),
             State1 = [NewMap,NewSteps,NewInfo,NewInst]
         )
 
@@ -65,7 +64,8 @@ travMap(State1,State2,GuessHist,Guess):-
     State1 = [OldMap,OldSteps,Info,Inst],
     OldSteps = [X1-Y1|_],
     Info = [NR,NC,EN],
-    myL(OldSteps,S), MS is NR * NC,
+    OldMap=[_,_,_,Suspicious,_],
+    myL(OldSteps,S1),myL(Suspicious,S2),S is S1 + S2, MS is NR * NC,
     (   EN > 0, S < MS->
             nextDes(NR,NC,OldSteps,OldMap,XP,YP,NewMap),
             write("Next Destination: "),write(XP),write(YP),nl,
@@ -105,29 +105,33 @@ tryShoot(State1,State2,GuessHist,X-Y,Guess):-
 %% [Done 15 May 2018] X, Y that is not traversed
 %% [Improved 16 May 2018] auto-generate until X Y is good
 nextDes(NR,NC,Steps,Map,X,Y,Map1):-
-    random_between(1,NC,X1),
-    random_between(1,NR,Y1),
-
+    Map=[_,_,_,Suspicious,Wumpus],
+    myL(Suspicious,S1),myL(Steps,S2),S is S1 + S2,
+    MS is NR * NC,
+    (S < MS ->
+        random_between(1,NC,X1),
+        random_between(1,NR,Y1),
     %% if X1-Y1 has not been traversed in this round
-    (   \+ member(X1-Y1,Steps)->
+        (   \+ member(X1-Y1,Steps),\+ member(X1-Y1,Suspicious)->
 
-        %% if X1-Y1 is not part of the suspicious queue, 
-        %% then X1-Y1 is approachable, suspicious queue does
-        %% not need to update
-        (   \+unapproachable(X1-Y1,Map) ->
-            X is X1,Y is Y1,
-            Map1 = Map
+            %% if X1-Y1 is not part of the suspicious queue, 
+            %% then X1-Y1 is approachable, suspicious queue does
+            %% not need to update
+            (   \+unapproachable(X1-Y1,Map) ->
+                X is X1,Y is Y1,
+                Map1 = Map
 
-        %% if X1-Y1 is part of the suspicious queue, then it is 
-        %% not approachable, need to generate a new one
-        ;   Map = [Empty,Pit,Wall,Suspicious,Wumpus],
-            append(Suspicious,[X1-Y1],Suspicious1),
-            Map0 = [Empty,Pit,Wall,Suspicious1,Wumpus],
-            nextDes(NR,NC,Steps,Map0,X,Y,Map1)
-            )
-       %% if X1-Y1 has been travered in this round, it is not usable,
-       %% need to genrate a new one.
-    ;   nextDes(NR,NC,Steps,Map,X,Y,Map1)
+            %% if X1-Y1 is part of the suspicious queue, then it is 
+            %% not approachable, need to generate a new one
+            ;   Map = [Empty,Pit,Wall,Suspicious,Wumpus],
+                append(Suspicious,[X1-Y1],Suspicious1),
+                Map0 = [Empty,Pit,Wall,Suspicious1,Wumpus],
+                nextDes(NR,NC,Steps,Map0,X,Y,Map1)
+                )
+           %% if X1-Y1 has been travered in this round, it is not usable,
+           %% need to genrate a new one.
+        ;   nextDes(NR,NC,Steps,Map,X,Y,Map1)
+        )
     ) .
 
 
@@ -145,7 +149,7 @@ findPath(X1,Y1,X2,Y2,EN,EN2,NR,NC,Map,Hist,[NMove|Guess]):-
     \+ member(Step,Hist),
     \+ member(Step,[Wumpus]),
     \+ member(Step,Pit),
-
+    \+ member(Step,Wall),
     findPath(XP,YP,X2,Y2,ENP,EN2,NR,NC,Map,[Step|Hist],Guess)
     ).
 
@@ -219,33 +223,56 @@ myL([_|List],N):-
 %% [Done 16 May 2018] construct the new map due to the set of
 %% instructions and feedback. output -> NewMap
 
-updateMap(OldMap,Guess,Feedback,Info,NewMap):-
+updateMap(OldMap,Inst,Guess,Feedback,Info,NewMap,NewInst):-
     OldMap = [Empty,_,_,_,_],Empty = [X-Y|_],
-    updateMap(X-Y,OldMap,Guess,Feedback,Info,NewMap).
+    updateMap(X-Y,OldMap,Inst,Guess,Feedback,Info,NewMap,NewInst).
 
 
-updateMap(_,OldMap,_,[],_,OldMap).
-updateMap(X-Y,OldMap,Guess,Feedback,Info,NewMap):-
+updateMap(_,OldMap,Inst,_,[],_,OldMap,Inst).
+updateMap(X-Y,OldMap,Inst,Guess,Feedback,Info,NewMap,NewInst):-
     Guess = [Move|Glist],
     Feedback = [Fb|Fblist],
     Info = [NR,NC,_],
-    map2List(OldMap,Mlist),
-    moveM(X,Y,X1,Y1,NR,NC,Move),
-    (   \+ member(X1-Y1,Mlist) ->
-            consMap(X1-Y1,Fb,OldMap,NewMap1),
-            (   Fb == wall ->
-                updateMap(X-Y,NewMap1,Glist,Fblist,Info,NewMap)
-            ;   updateMap(X1-Y1,NewMap1,Glist,Fblist,Info,NewMap)
-                )
+    %% at a miss, delete the location from the instruction
+    (   Move == shoot, Fb == miss ->
+        delete(Inst,(X-Y,_),NewInst1),
+        updateMap(X-Y,OldMap,NewInst1,Glist,Fblist,Info,NewMap,NewInst)
+    ;
+
+
+    %% if not a miss, update the map
+
+    %% get the destination for the feedback and update to map if not in it
+    %% if is wall -> the next starting point will be this destination
+    %% if feedback is wumpus -> construct shooting instructions (makePair)
+    %% else the next starting point is this starting point (robot did not move)
+   
+        map2List(OldMap,Mlist),
+        moveM(X,Y,X1,Y1,NR,NC,Move),
+        (   \+ member(X1-Y1,Mlist) ->
+                consMap(X1-Y1,Fb,OldMap,NewMap1),
+
+                (   %% if is wall, update map only
+                    Fb == wall ->
+                    updateMap(X-Y,NewMap1,Inst,Glist,Fblist,Info,NewMap,NewInst)
+                ;   %% if is wumpus, update map and shooting instructions
+                    Fb == wumpus ->
+                    makePair(NewMap1,NR,NC,NewInst1),
+                    updateMap(X1-Y1,NewMap1,NewInst1,Glist,Fblist,Info,NewMap,NewInst)
+                ;    %% if not wall or wumpus, update map and starting point
+                   updateMap(X1-Y1,NewMap1,Inst,Glist,Fblist,Info,NewMap,NewInst)
+                    )
             
-    ;   
-        updateMap(X1-Y1,OldMap,Glist,Fblist,Info,NewMap)
-        ).
+        ;   %% if the destination is in map then no need to update the map
+            %% simply start at the destination and go on constructing the map until the end of the feedback
+            updateMap(X1-Y1,OldMap,Inst,Glist,Fblist,Info,NewMap,NewInst)
+        )
+   
+    ).
 %% 
 
 
 consMap(BP,Fb,Map0,Map1):-
-    write("constructing... "),write(BP),write(" "),write(Fb),write(" "),nl,
     Map0 = [Empty,Pit,Wall,Suspicious,Wumpus],
     (   Fb == pit ->
             append(Pit,[BP],Pit1),
@@ -278,8 +305,7 @@ map2List(Map,List):-
     Map = [Empty,Pit,Wall,Suspicious,Wumpus],
     append(Empty,Pit,List0),
     append(List0,Wall,List1),
-    append(List1,Suspicious,List2),
-    append(List2,[Wumpus],List).
+    append(List1,[Wumpus],List).
 
 %% [Done 16 May 2018] get status of next block using current position,
 %% movement and feedback
@@ -401,8 +427,8 @@ unapproachable(X-Y,Map):-
     Map=[_,Pit,Wall,Suspicious,_],
     append(Pit,Wall,List),
     append(List,Suspicious,NotApprocable),
-    nl,write("unapproachable List: "),write(NotApprocable),nl,
     member(X-Y2,NotApprocable),
     member(X-Y1,NotApprocable),
     member(X1-Y,NotApprocable),
     member(X2-Y,NotApprocable).
+
