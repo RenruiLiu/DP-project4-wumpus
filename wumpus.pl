@@ -419,15 +419,15 @@ createWall(NR,NC,Wall):-
     append(Wall3,Wall4,Wall34),
     append(Wall12,Wall34,Wall).
 
-createRow(R,0,[R-0]).
-createRow(R,C,[R-C|Walllist]):-
+createRow(R,0,[0-R]).
+createRow(R,C,[C-R|Walllist]):-
 ( C > 0 ->
     C1 is C - 1,
     createRow(R,C1,Walllist)
     ).
 
 createCol(0,C,[]).
-createCol(R,C,[R-C|Walllist]):-
+createCol(R,C,[C-R|Walllist]):-
 (   R > 0 ->
     R1 is R - 1,
     createCol(R1,C,Walllist)
