@@ -38,7 +38,7 @@ updateState(State0,Guess,Feedback,State1):-
     State0 = [OldMap,_,Info,Inst],
     Info = [NR,NC,_],
     NewInfo = [NR,NC,100],
-    updateMap(OldMap,Inst,Guess,Feedback,Info,NewMap,NewInst),
+    updateMap(OldMap,Inst,Guess,Feedback,Info,NewMap,NewInst),write(1),
     map2List(NewMap,NMlist),
     cop2Step(NMlist,NR,NC,NewSteps),
     NewMap = [_,_,_,_,Wumpus],
@@ -168,9 +168,6 @@ constSteps(X-Y,NR,NC,EN,[Move|Guess],OldSteps,NewSteps):-
 
 
 %% [Done 15 May 2018] moving instructions
-move(EN,ENN,shoot):-
-    ENN is EN - 5.
-
 move(X,Y,XN,YN,EN,ENN,_,_,north):-
     (   Y > 1 ->
             YN is Y - 1,
@@ -233,10 +230,21 @@ updateMap(X-Y,OldMap,Inst,Guess,Feedback,Info,NewMap,NewInst):-
     Guess = [Move|Glist],
     Feedback = [Fb|Fblist],
     Info = [NR,NC,_],
-    %% at a miss, delete the location from the instruction
+
+    nl,write(OldMap),nl,write(X-Y-Move-Fb),nl,
+    %% If the robot is at a correct place but shoot a miss, delete the location from the instruction
     (   Move == shoot, Fb == miss ->
-        delete(Inst,(X-Y,_),NewInst1),
-        updateMap(X-Y,OldMap,NewInst1,Glist,Fblist,Info,NewMap,NewInst)
+        Inst=[(X1-Y1,Move1)|Instlist],
+        move(X1,Y1,X2,Y2,5,_,NR,NC,Move1),
+        nl,write("expected position and actual position: "),write(X2-Y2),write(" "),write(X-Y),nl,
+        (   X2-Y2==X-Y ->
+            write("deleting instruction"),nl,
+                updateMap(X-Y,OldMap,Instlist,Glist,Fblist,Info,NewMap,NewInst)
+        ;   X1-Y1==X-Y ->
+                updateMap(X-Y,OldMap,Instlist,Glist,Fblist,Info,NewMap,NewInst)
+        ;   
+                updateMap(X-Y,OldMap,Inst,Glist,Fblist,Info,NewMap,NewInst)
+            )
     ;
 
 
@@ -265,7 +273,13 @@ updateMap(X-Y,OldMap,Inst,Guess,Feedback,Info,NewMap,NewInst):-
             
         ;   %% if the destination is in map then no need to update the map
             %% simply start at the destination and go on constructing the map until the end of the feedback
-            updateMap(X1-Y1,OldMap,Inst,Glist,Fblist,Info,NewMap,NewInst)
+            ( Fb==wall ->
+
+                updateMap(X-Y,OldMap,Inst,Glist,Fblist,Info,NewMap,NewInst)
+            ;
+
+                updateMap(X1-Y1,OldMap,Inst,Glist,Fblist,Info,NewMap,NewInst)
+            )
         )
    
     ).
